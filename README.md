@@ -40,10 +40,10 @@ This project uses `uv` for dependency management.
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-2. Clone and sync the environment:
+2. Clone the repository and install dependencies:
    ```bash
-   git clone https://github.com/bill-kopp-ai-dev/percival.OS.git
-   cd percival.OS/percival.OS_Dev/mcp_servers/percival-agentmail-mcp
+   git clone https://github.com/bill-kopp-ai-dev/percival-agentmail-mcp.git
+   cd percival-agentmail-mcp
    uv sync
    ```
 
@@ -76,7 +76,7 @@ To inject this MCP server into your runtime, add the following block to your con
       "command": "uv",
       "args": [
         "--directory",
-        "/absolute/path/to/percival.OS/percival.OS_Dev/mcp_servers/percival-agentmail-mcp",
+        "/absolute/path/to/percival-agentmail-mcp",
         "run",
         "percival-agentmail-mcp"
       ],
