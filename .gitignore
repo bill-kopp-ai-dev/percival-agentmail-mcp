@@ -1,0 +1,27 @@
+# LOW-02: Prevent accidental commit of secrets
+.env
+.env.*
+!.env.example
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test / Cache
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
