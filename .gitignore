@@ -2,7 +2,11 @@
 .env
 .env.*
 !.env.example
+.env.local
 *.env
+
+# LOW-04: Prevent accidental commit of scratch files with secrets
+scratch_*.py
 
 # Python
 __pycache__/

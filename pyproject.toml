@@ -4,18 +4,32 @@ build-backend = "hatchling.build"
 
 [project]
 name = "percival-agentmail-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Percival AgentMail MCP server — the Nanobot agent's own email service"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
+keywords = ["mcp", "agentmail", "percival", "nanobot", "agent", "email"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: Email",
+]
 dependencies = [
     "mcp[cli]>=1.12.0",
     "agentmail>=0.5.0",
     "python-dotenv>=0.19.0",
-    "pydantic>=2.3.0",
+    "pydantic[email]>=2.3.0",
     "pydantic-settings>=2.0.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/bill-kopp-ai-dev/percival.OS"
+Issues = "https://github.com/bill-kopp-ai-dev/percival.OS/issues"
+Changelog = "https://github.com/bill-kopp-ai-dev/percival.OS/blob/main/percival-agentmail-mcp/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
@@ -32,12 +46,40 @@ percival-agentmail-mcp = "percival_agentmail_mcp.server:main"
 packages = ["src/percival_agentmail_mcp"]
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
+select = ["E", "F", "I", "N", "W", "UP", "B"]
+ignore = ["PLR0913"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PLR2004", "S101", "F401", "F403", "E501"]
+"src/percival_agentmail_mcp/tools/*.py" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: live API tests; requires AGENTMAIL_LIVE_TEST=1",
+]
+
+[tool.coverage.run]
+source = ["src/percival_agentmail_mcp"]
+branch = true
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+fail_under = 80
+show_missing = true
