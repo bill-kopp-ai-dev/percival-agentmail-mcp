@@ -1,6 +1,6 @@
 # 🤖 Percival AgentMail - percival.OS MCP
 
-**Version 0.2.0**
+**Version 0.3.0**
 
 [![Python](https://img.shields.io/badge/python-3.10+-yellow.svg)]()
 [![MCP](https://img.shields.io/badge/mcp-server-blue.svg)]()
@@ -30,7 +30,7 @@ The server exposes 23 tools optimized for LLM comprehension, divided into:
 - **Messages:** `mail_send_email` (supports attachments), `mail_list_messages`, `mail_read_message`, `mail_reply_to_message`, `mail_reply_all_message`, `mail_forward_message`, `mail_update_message`, `mail_delete_message`, `mail_get_attachment`
 - **Threads:** `mail_list_threads`, `mail_get_thread`, `mail_update_thread`, `mail_delete_thread`, `mail_mark_thread_read`
 - **Drafts:** `mail_create_draft`, `mail_list_drafts`, `mail_get_draft`, `mail_update_draft`, `mail_send_draft`
-- **Utility:** `mail_get_status` (pings API, reports latency)
+- **Utility:** `mail_get_status` (pings API, reports latency), `mail_get_version`
 
 ### 🎯 MCP Prompts
 The server also exposes 3 prompts that guide the LLM through recurring

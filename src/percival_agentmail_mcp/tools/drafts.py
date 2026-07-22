@@ -110,10 +110,17 @@ def register(mcp: FastMCP) -> None:
         config: ServerConfig,
         draft_id: str,
     ) -> str:
-        """Immediately dispatches a previously saved email draft."""
+        """Immediately dispatches a previously saved email draft.
+
+        The AgentMail upstream requires at least one of ``add_labels`` /
+        ``remove_labels`` to be present in the body. We always pass
+        ``add_labels=['sent']`` so the call is accepted (the label is
+        consistent with the message lifecycle: draft → sent).
+        """
         return client.format_response(
             await client.client.inboxes.drafts.send(
                 inbox_id=config.inbox_id,
                 draft_id=draft_id,
+                add_labels=["sent"],
             )
         )

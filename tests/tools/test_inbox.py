@@ -71,10 +71,33 @@ async def test_update_inbox_with_display_name(get_tool, fake_ctx, mock_wrapper, 
 
 
 @pytest.mark.asyncio
-async def test_update_inbox_without_display_name(get_tool, fake_ctx, mock_wrapper, mock_config) -> None:
+async def test_update_inbox_without_display_name_or_metadata(get_tool, fake_ctx, mock_wrapper) -> None:
+    """Bug D: empty-body update must be rejected locally with a clear error."""
+    mock_wrapper.client.inboxes.update = AsyncMock(return_value={"id": "x"})
+    result = await get_tool("mail_update_inbox")(fake_ctx)
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "display_name" in parsed["message"]
+    assert "metadata" in parsed["message"]
+    # The API must NOT be called with an empty body.
+    mock_wrapper.client.inboxes.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_inbox_with_metadata_only(get_tool, fake_ctx, mock_wrapper, mock_config) -> None:
     mock_wrapper.client.inboxes.update = AsyncMock(return_value={"id": mock_config.inbox_id})
-    await get_tool("mail_update_inbox")(fake_ctx)
-    mock_wrapper.client.inboxes.update.assert_awaited_once_with(inbox_id=mock_config.inbox_id, display_name=None)
+    await get_tool("mail_update_inbox")(fake_ctx, metadata={"team": "ops"})
+    mock_wrapper.client.inboxes.update.assert_awaited_once_with(inbox_id=mock_config.inbox_id, metadata={"team": "ops"})
+
+
+@pytest.mark.asyncio
+async def test_update_inbox_normalizes_display_name_whitespace(get_tool, fake_ctx, mock_wrapper, mock_config) -> None:
+    """S3 suggestion: whitespace is trimmed/compressed before sending."""
+    mock_wrapper.client.inboxes.update = AsyncMock(return_value={"id": mock_config.inbox_id})
+    await get_tool("mail_update_inbox")(fake_ctx, display_name="  Nano   v2   MCP   ")
+    mock_wrapper.client.inboxes.update.assert_awaited_once_with(
+        inbox_id=mock_config.inbox_id, display_name="Nano v2 MCP"
+    )
 
 
 # --- mail_list_inbox_events ---

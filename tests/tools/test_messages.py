@@ -178,7 +178,10 @@ async def test_forward_message_minimal(get_tool, fake_ctx, mock_wrapper, mock_co
     mock_wrapper.client.inboxes.messages.forward = AsyncMock(return_value={"id": "msg_4"})
     await get_tool("mail_forward_message")(fake_ctx, message_id="msg_1", to=["x@y.com"])
     mock_wrapper.client.inboxes.messages.forward.assert_awaited_once_with(
-        inbox_id=mock_config.inbox_id, message_id="msg_1", to=["x@y.com"]
+        inbox_id=mock_config.inbox_id,
+        message_id="msg_1",
+        to=["x@y.com"],
+        labels=["forwarded"],
     )
 
 

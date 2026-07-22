@@ -91,7 +91,15 @@ def with_agentmail(fn: F) -> F:
         try:
             return await fn(ctx, client=client, config=ctx_obj.config, **kwargs)
         except Exception as e:
-            return client.format_error(e)
+            # S5: surface the tool name + affected IDs in the error so the
+            # LLM gets actionable context.
+            tool_name = getattr(fn, "__name__", None)
+            affected = {
+                k: v
+                for k, v in kwargs.items()
+                if isinstance(v, (str, int)) and k in {"message_id", "thread_id", "draft_id", "inbox_id"}
+            }
+            return client.format_error(e, tool_name=tool_name, affected=affected)
 
     # Hide injected params from FastMCP's schema introspection
     wrapper.__signature__ = _build_public_signature(fn)  # type: ignore[attr-defined]

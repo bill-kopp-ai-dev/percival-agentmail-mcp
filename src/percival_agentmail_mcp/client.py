@@ -253,7 +253,13 @@ class AgentMailClientWrapper:
         serialized = self.fence_message_payload(obj)
         return json.dumps(serialized, indent=2, default=_json_default)
 
-    def format_error(self, e: Exception) -> str:
+    def format_error(
+        self,
+        e: Exception,
+        *,
+        tool_name: str | None = None,
+        affected: dict[str, Any] | None = None,
+    ) -> str:
         """Format any exception into a safe JSON error for the LLM.
 
         Order of handling (most specific first):
@@ -261,7 +267,23 @@ class AgentMailClientWrapper:
         2. ``httpx`` transport errors → actionable messages.
         3. ``pydantic.ValidationError`` → show which field failed (no values).
         4. Anything else → opaque message; full traceback logged internally.
+
+        Optional context (S5):
+        - ``tool_name``: name of the tool that raised (e.g. ``mail_send_draft``).
+        - ``affected``: dict of IDs relevant to the failure (e.g.
+          ``{"draft_id": "..."}``). The ``message`` field is augmented
+          with both pieces when provided.
         """
+        meta: dict[str, Any] = {}
+        if tool_name:
+            meta["tool"] = tool_name
+        if affected:
+            meta["affected"] = affected
+
+        def _with_meta(payload: dict[str, Any]) -> str:
+            payload.update(meta)
+            return json.dumps(payload, indent=2)
+
         if isinstance(e, ApiError):
             status_code = e.status_code
             logger.error("AgentMail API error %s: %s", status_code, e.body)
@@ -283,6 +305,14 @@ class AgentMailClientWrapper:
                     f"API error (HTTP {status_code})." if status_code is not None else "API error (no status code)."
                 )
 
+            # S5: if the upstream body has a non-empty string message
+            # other than the generic one, surface it in the LLM response.
+            upstream_body = getattr(e, "body", None)
+            if isinstance(upstream_body, str) and upstream_body.strip():
+                upstream_msg = upstream_body.strip()
+                if upstream_msg and upstream_msg != message:
+                    message = f"{message} Upstream: {upstream_msg[:300]}"
+
             payload: dict[str, Any] = {
                 "status": "error",
                 "message": message + hint,
@@ -291,40 +321,37 @@ class AgentMailClientWrapper:
                 payload["code"] = status_code
             else:
                 payload["code"] = "UNKNOWN"
-            return json.dumps(payload, indent=2)
+            return _with_meta(payload)
 
         if isinstance(e, httpx.TimeoutException):
             logger.error("AgentMail timeout: %s", e)
-            return json.dumps(
+            return _with_meta(
                 {
                     "status": "error",
                     "code": "TIMEOUT",
                     "message": ("The AgentMail API did not respond in time. Try again later."),
-                },
-                indent=2,
+                }
             )
 
         if isinstance(e, httpx.ConnectError):
             logger.error("AgentMail connect error: %s", e)
-            return json.dumps(
+            return _with_meta(
                 {
                     "status": "error",
                     "code": "CONNECTION",
                     "message": ("Could not reach the AgentMail API. Check network connectivity."),
-                },
-                indent=2,
+                }
             )
 
         if isinstance(e, ValidationError):
             fields = [".".join(str(p) for p in err["loc"]) for err in e.errors()]
             logger.error("Validation error on fields: %s", fields)
-            return json.dumps(
+            return _with_meta(
                 {
                     "status": "error",
                     "code": "VALIDATION",
                     "message": f"Invalid input fields: {', '.join(fields)}.",
-                },
-                indent=2,
+                }
             )
 
         if isinstance(e, ValueError):
@@ -332,20 +359,18 @@ class AgentMailClientWrapper:
             # attachment size/base64 checks) carry actionable messages
             # for the LLM — surface them instead of hiding as "internal".
             logger.error("Validation error (ValueError): %s", e)
-            return json.dumps(
+            return _with_meta(
                 {
                     "status": "error",
                     "code": "VALIDATION",
                     "message": str(e),
-                },
-                indent=2,
+                }
             )
 
         logger.error("Unexpected error: %s", e, exc_info=True)
-        return json.dumps(
+        return _with_meta(
             {
                 "status": "error",
                 "message": "An internal error occurred. Check server logs for details.",
-            },
-            indent=2,
+            }
         )

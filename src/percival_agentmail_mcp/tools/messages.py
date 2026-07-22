@@ -193,12 +193,19 @@ def register(mcp: FastMCP) -> None:
         text: str | None = None,
         html: str | None = None,
     ) -> str:
-        """Forwards an existing message to new recipients. You can optionally prepend your own plain text or HTML content."""
+        """Forwards an existing message to new recipients.
+
+        You can optionally prepend your own plain text or HTML content.
+        The ``labels=['forwarded']`` argument is always sent alongside
+        ``to`` because the upstream rejects calls with an empty body
+        (Bug B in the 2026-07-21 incident report).
+        """
         kwargs = build_kwargs(
             {
                 "inbox_id": config.inbox_id,
                 "message_id": message_id,
                 "to": normalize_list(to),
+                "labels": ["forwarded"],
             },
             {"text": text, "html": html},
         )
@@ -215,13 +222,26 @@ def register(mcp: FastMCP) -> None:
         add_labels: list[str] | str | None = None,
         remove_labels: list[str] | str | None = None,
     ) -> str:
-        """Modifies an existing message's metadata, primarily used for adding or removing categorization labels like 'read', 'unread', or custom tags."""
+        """Modifies an existing message's metadata.
+
+        Used for adding or removing categorization labels like ``read``,
+        ``unread`` or custom tags. At least one of ``add_labels`` or
+        ``remove_labels`` MUST be provided (the AgentMail upstream
+        rejects empty-body updates with HTTP 400 — Bug C in the
+        2026-07-21 incident report).
+        """
+        norm_add = normalize_list(add_labels)
+        norm_rem = normalize_list(remove_labels)
+        if not norm_add and not norm_rem:
+            # Surface a clear error before hitting the API.
+            raise ValueError(
+                "update_message requires at least one of `add_labels` or "
+                "`remove_labels` to be a non-empty list. "
+                f"Got add_labels={add_labels!r}, remove_labels={remove_labels!r}."
+            )
         kwargs = build_kwargs(
             {"inbox_id": config.inbox_id, "message_id": message_id},
-            {
-                "add_labels": normalize_list(add_labels),
-                "remove_labels": normalize_list(remove_labels),
-            },
+            {"add_labels": norm_add, "remove_labels": norm_rem},
         )
         return client.format_response(await client.client.inboxes.messages.update(**kwargs))
 

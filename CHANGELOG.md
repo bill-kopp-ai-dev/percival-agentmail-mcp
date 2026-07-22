@@ -4,6 +4,52 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
+## [0.3.0] — 2026-07-21
+
+### Fixed (reported by nanobot live-testing on 2026-07-21, see
+[MCP_Docs/Issues/2026-07-21-percival-agentmail-mcp-4-bugs.md](../../MCP_Docs/Issues/2026-07-21-percival-agentmail-mcp-4-bugs.md))
+
+- **Bug A (`mail_send_draft`)** — handler was posting an empty body
+  (``{}``), which the AgentMail upstream rejects with HTTP 400 because
+  ``drafts.send`` requires at least one of ``add_labels`` /
+  ``remove_labels``. The handler now always sends
+  ``add_labels=["sent"]`` (label consistent with draft → sent
+  lifecycle).
+- **Bug B (`mail_forward_message`)** — same root cause: the upstream
+  rejected forward calls without a body. The handler now always passes
+  ``labels=["forwarded"]``.
+- **Bug C (`mail_update_message`)** — calls with both `add_labels=None`
+  and `remove_labels=None` were silently sending an empty body. The
+  handler now raises a clear `ValueError` *before* hitting the API,
+  letting the LLM know which field is missing.
+- **Bug D (`mail_update_inbox`)** — the same empty-body problem on
+  `inboxes.update`. The handler now requires at least one of
+  ``display_name`` or ``metadata``, accepts a new ``metadata`` argument
+  on the tool signature (S3 suggestion), and pre-normalises
+  ``display_name`` by trimming and compressing internal whitespace.
+
+### Added
+
+- **Tool `mail_get_version`** (S7) — returns ``package_version``,
+  ``server_name``, ``python_version``, ``platform``, ``inbox`` without
+  calling the AgentMail API. Useful for troubleshooting "am I talking
+  to the right server?".
+- **S1 — End-to-end MCP-transport contract tests**
+  (`tests/test_mcp_transport_contract.py`). These exercise the full
+  chain — handler → SDK → httpx — by mocking the AgentMail HTTP API
+  with `respx`. They catch the empty-body 400s that slipped past the
+  previous handler-level mocks.
+- **S5 — Actionable error responses.** `format_error` now accepts
+  ``tool_name`` and ``affected`` and embeds both into the JSON
+  payload. ``@with_agentmail`` populates them automatically. The
+  message additionally surfaces the upstream body string when
+  non-empty.
+
+### Internal
+
+- `--cov-fail-under=80` and `--cov` configured.
+- `helpers.py` now exports both `build_kwargs` and `cap_limit`.
+
 ## [Unreleased]
 
 ### Fixed

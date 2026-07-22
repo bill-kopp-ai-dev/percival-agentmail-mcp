@@ -145,7 +145,11 @@ async def test_update_draft_partial(get_tool, fake_ctx, mock_wrapper) -> None:
 async def test_send_draft_success(get_tool, fake_ctx, mock_wrapper, mock_config) -> None:
     mock_wrapper.client.inboxes.drafts.send = AsyncMock(return_value={"id": "msg_x"})
     await get_tool("mail_send_draft")(fake_ctx, draft_id="d_1")
-    mock_wrapper.client.inboxes.drafts.send.assert_awaited_once_with(inbox_id=mock_config.inbox_id, draft_id="d_1")
+    mock_wrapper.client.inboxes.drafts.send.assert_awaited_once_with(
+        inbox_id=mock_config.inbox_id,
+        draft_id="d_1",
+        add_labels=["sent"],
+    )
 
 
 @pytest.mark.asyncio

@@ -6,13 +6,14 @@ The aggregator in this ``__init__`` calls them all in order.
 
 from mcp.server.fastmcp import FastMCP
 
-from percival_agentmail_mcp.tools import drafts, inbox, messages, status, threads
+from percival_agentmail_mcp.tools import drafts, inbox, messages, status, threads, version
 
 
 def register_tools(mcp: FastMCP) -> None:
-    """Register all 23 MCP tools for AgentMail API operations."""
+    """Register all MCP tools for AgentMail API operations."""
     inbox.register(mcp)
     messages.register(mcp)
     threads.register(mcp)
     drafts.register(mcp)
     status.register(mcp)
+    version.register(mcp)
