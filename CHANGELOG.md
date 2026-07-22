@@ -4,28 +4,33 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.3.2] — 2026-07-22
 
 ### Fixed (review of the 0.3.0/0.3.1 incident response)
+
 - **`AgentMailClientWrapper.aclose()` closed the wrong object (Bug R4
   was only half-fixed).** The 0.3.1 fix stopped at
   `wrapper.client._client_wrapper.httpx_client`, but that object is
   agentmail's own `AsyncHttpClient` wrapper, which has no `aclose()` —
   the code's defensive `getattr(..., None)` made this fail silently
   instead of raising, so the original crash was gone but the real
-  `httpx.AsyncClient` (one level deeper, at `...httpx_client.httpx_client`)
-  was never actually closed. Verified against the live agentmail-sdk
-  0.5.x object graph. Added a mock-free regression test
-  (`test_wrapper_aclose_closes_the_real_sdk_httpx_client`) that
-  exercises the real SDK object instead of a hand-built mock, since
-  mock/reality drift is exactly what caused both the original bug and
-  this incomplete fix.
+  `httpx.AsyncClient` (one level deeper, at
+  `...httpx_client.httpx_client`) was never actually closed. Verified
+  against the live agentmail-sdk 0.5.x object graph. Added a mock-free
+  regression test (`test_wrapper_aclose_closes_the_real_sdk_httpx_client`)
+  that exercises the real SDK object instead of a hand-built mock,
+  since mock/reality drift is exactly what caused both the original
+  bug and this incomplete fix.
 - **Missing `respx` dev dependency.** `tests/test_mcp_transport_contract.py`
   (S1) imports `respx`, but it was only ever declared in the parent
   monorepo workspace's `pyproject.toml`, not in this package's own
-  `[dependency-groups.dev]`. Running `percival-agentmail-mcp` standalone
-  (as its own README's `uv sync --all-extras --dev` instructions
-  describe) would fail to collect that test file. Added `respx` here.
+  `[dependency-groups.dev]`. Running `percival-agentmail-mcp`
+  standalone (as its own README's `uv sync --all-extras --dev`
+  instructions describe) would fail to collect that test file.
+  Added `respx` here.
+
+### Internal
+
 - Corrected stale tool-count references (README, `tests/conftest.py`)
   from 23 to 24 after `mail_get_version` was added.
 - Removed `tools/version.py`'s duplicate version-resolution helper
@@ -34,6 +39,7 @@ versioning follows [SemVer](https://semver.org/).
   `percival_agentmail_mcp.__version__` single source of truth.
 
 ### Verified
+
 - Re-confirmed Bugs A–D (`mail_send_draft`, `mail_forward_message`,
   `mail_update_message`, `mail_update_inbox`) are fixed at the wire
   level via `tests/test_mcp_transport_contract.py`, which asserts on
@@ -124,32 +130,6 @@ incident response)
 
 - `--cov-fail-under=80` and `--cov` configured.
 - `helpers.py` now exports both `build_kwargs` and `cap_limit`.
-
-## [Unreleased]
-
-### Fixed
-- **Duplicate side-effect risk removed:** `@retryable` no longer wraps
-  non-idempotent write operations (`mail_send_email`,
-  `mail_reply_to_message`, `mail_reply_all_message`,
-  `mail_forward_message`, `mail_create_draft`, `mail_send_draft`). The
-  AgentMail SDK has no idempotency key, so auto-retrying these on a
-  transient 5xx/timeout could have sent a duplicate email or created a
-  duplicate draft. Read/list/get/update/delete operations keep retrying.
-- **Attachments now actually reach the API:** `mail_send_email`'s
-  `attachments` payload used `content_base64` as the key, but the SDK's
-  `SendAttachment` model only recognizes `content` for the base64
-  payload — the extra `content_base64` key was silently accepted and
-  ignored (`extra="allow"`), so every attachment was sent with empty
-  content. The tool now translates `content_base64` → `content` right
-  before the SDK call; the LLM-facing parameter name is unchanged.
-- **Version drift:** `percival_agentmail_mcp.__version__` was still
-  hardcoded to `"0.1.0"` after the 0.2.0 release, even though
-  `--version` (which read `importlib.metadata` separately) reported the
-  correct value. `__version__` itself now derives from
-  `importlib.metadata`, so there is exactly one source of truth again;
-  `server.py`'s redundant `_resolve_version()` helper was removed.
-- Corrected stale tool-count references (README, `tools/__init__.py`,
-  test docstring) from 21/24 to the actual 23.
 
 ## [0.2.0] — 2026-07-21
 

@@ -1,6 +1,6 @@
 # 🤖 Percival AgentMail - percival.OS MCP
 
-**Version 0.3.1**
+**Version 0.3.2**
 
 [![Python](https://img.shields.io/badge/python-3.10+-yellow.svg)]()
 [![MCP](https://img.shields.io/badge/mcp-server-blue.svg)]()
@@ -128,7 +128,25 @@ Run with `--debug` for verbose logging.
 
 ---
 
-## 📚 About the Project
+## �️ Recent Maintenance (0.3.x)
+
+The 0.3.x line tightens the contract with the upstream AgentMail API
+and stamps out two categories of bugs:
+
+1. **Wire-level contract** (Bugs A–D, 2026-07-21 incident): four MCP
+   tools were silently posting empty bodies or using labels that the
+   upstream rejects. Fixed at the handler layer and end-to-end
+   (`tests/test_mcp_transport_contract.py`). No action required.
+2. **Connection lifecycle** (0.3.2): the lifespan's `aclose()` now
+   closes the real `httpx.AsyncClient` two levels below
+   `AsyncAgentMail`, draining connection pools cleanly instead of
+   leaking them silently. No action required.
+
+See `CHANGELOG.md` for the full history.
+
+---
+
+## �📚 About the Project
 This server is an integral module of the **percival.OS** project. It provides a secure way for Nanobot to manage external communications autonomously.
 
 - **Main Repository**: [https://github.com/bill-kopp-ai-dev/percival.OS](https://github.com/bill-kopp-ai-dev/percival.OS)
