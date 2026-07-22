@@ -106,3 +106,47 @@ async def test_metadata_passthrough_when_sdk_supports_it(monkeypatch) -> None:
     assert route.called
     body = json.loads(route.calls[0].request.content.decode())
     assert body == {"metadata": {"team": "ops"}}
+
+
+@pytest.mark.asyncio
+async def test_metadata_typeerror_at_runtime_is_translated(monkeypatch) -> None:
+    """Even when static inspection says 'supported', the SDK runtime call
+    may still raise ``TypeError: unexpected keyword 'metadata'`` (this
+    is exactly what happened in the 0.5.0 CI run on 2026-07-22 — local
+    static probes were lying because the SDK was stubbed for tests).
+    The handler must catch that TypeError and translate it into the
+    same actionable error path.
+    """
+    from mcp.server.fastmcp import FastMCP
+
+    from percival_agentmail_mcp.tools import register_tools
+    from tests.conftest import _FakeMCPContext  # type: ignore
+
+    # Pretend the static probe said 'supported', so we skip the early guard.
+    monkeypatch.setattr(
+        "percival_agentmail_mcp.tools.inbox._sdk_supports_metadata",
+        lambda: True,
+    )
+
+    wrapper = _make_fake_lifespan_context()
+    # Replace the underlying SDK chain with mocks that simulate the
+    # exact observed runtime failure: TypeError with the expected string.
+    wrapper.client.client = MagicMock()  # type: ignore[attr-defined]
+
+    async def boom(*args, **kwargs):
+        raise TypeError("AsyncInboxesClient.update() got an unexpected keyword argument 'metadata'")
+
+    wrapper.client.client.inboxes.update = boom  # type: ignore[attr-defined]
+
+    mock_ctx = _FakeMCPContext(wrapper)
+
+    server = FastMCP("test-runtime-typeerror")
+    register_tools(server)
+    tool = server._tool_manager._tools["mail_update_inbox"].fn
+
+    result = await tool(mock_ctx, metadata={"team": "ops"})
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    # The translated ValueError must surface what to do next.
+    assert "agentmail" in parsed["message"].lower()
+    assert "metadata" in parsed["message"].lower()

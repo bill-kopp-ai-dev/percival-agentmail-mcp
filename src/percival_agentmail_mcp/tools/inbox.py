@@ -95,7 +95,25 @@ def register(mcp: FastMCP) -> None:
         if norm_meta is not None:
             kwargs["metadata"] = norm_meta
 
-        inbox = await client.client.inboxes.update(**kwargs)
+        # Even when ``_sdk_supports_metadata`` returns True (e.g., a 0.5.x
+        # wheel built with the kwarg), the actual SDK dispatch may still
+        # reject the call with TypeError if the method signature in the
+        # installed wheel is older than what ``inspect`` saw. The handler
+        # is the last line of defense: catch TypeErrors with the "got an
+        # unexpected keyword argument 'metadata'" signature and translate
+        # them into the same actionable ValueError path above.
+        try:
+            inbox = await client.client.inboxes.update(**kwargs)
+        except TypeError as e:
+            if "metadata" in str(e) and "unexpected keyword argument" in str(e):
+                raise ValueError(
+                    "update_inbox was called with metadata, but the "
+                    "installed agentmail SDK rejected the call at runtime "
+                    f"({e}). Upgrade agentmail to a wheel that ships the "
+                    "`metadata` kwarg on `inboxes.update`, or call "
+                    "update_inbox with display_name=... instead."
+                ) from e
+            raise
         return client.format_response(inbox)
 
     @mcp.tool("mail_list_inbox_events")
