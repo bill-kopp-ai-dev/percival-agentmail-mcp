@@ -1,7 +1,5 @@
 """Inbox management tools (3 tools)."""
 
-import inspect
-
 from mcp.server.fastmcp import Context, FastMCP
 
 from percival_agentmail_mcp.client import AgentMailClientWrapper
@@ -14,25 +12,6 @@ from percival_agentmail_mcp.helpers import cap_limit
 def _normalize_display_name(value: str) -> str:
     """Trim and compress whitespace on a display_name before sending."""
     return " ".join(value.split())
-
-
-def _sdk_supports_metadata() -> bool:
-    """Return True if the installed AgentMail SDK accepts ``metadata`` on update().
-
-    Different 0.5.x wheels of the AgentMail SDK have shipped with and
-    without the ``metadata`` kwarg on ``inboxes.update``. The CI
-    workflow on 2026-07-22 pinned ``agentmail==0.5.0``, which lacks the
-    parameter — `update(metadata=...)` raised ``TypeError: got an
-    unexpected keyword argument 'metadata'``. We probe the live SDK
-    once, lazily, and skip passing metadata when it isn't supported.
-    """
-    try:
-        from agentmail import AsyncAgentMail
-
-        params = inspect.signature(AsyncAgentMail(api_key="probe").inboxes.update).parameters
-    except Exception:  # pragma: no cover — defensive
-        return False
-    return "metadata" in params
 
 
 def register(mcp: FastMCP) -> None:
@@ -80,39 +59,36 @@ def register(mcp: FastMCP) -> None:
                 f"Got display_name={display_name!r}, metadata={metadata!r}."
             )
 
-        if norm_meta is not None and not _sdk_supports_metadata():
-            raise ValueError(
-                "update_inbox was called with metadata, but the installed "
-                "agentmail SDK does not support updating inbox metadata "
-                "(observed against agentmail==0.5.0). Upgrade agentmail to "
-                "a wheel that ships the `metadata` kwarg on `inboxes.update`, "
-                "or call update_inbox with display_name=... instead."
-            )
-
         kwargs: dict = {"inbox_id": config.inbox_id}
         if norm_name is not None:
             kwargs["display_name"] = norm_name
         if norm_meta is not None:
             kwargs["metadata"] = norm_meta
 
-        # Even when ``_sdk_supports_metadata`` returns True (e.g., a 0.5.x
-        # wheel built with the kwarg), the actual SDK dispatch may still
-        # reject the call with TypeError if the method signature in the
-        # installed wheel is older than what ``inspect`` saw. The handler
-        # is the last line of defense: catch TypeErrors with the "got an
-        # unexpected keyword argument 'metadata'" signature and translate
-        # them into the same actionable ValueError path above.
+        # The AgentMail SDK ships wheels with and without the ``metadata``
+        # kwarg on ``inboxes.update``. We can't statically tell which build
+        # is installed, so the call itself is the source of truth: catch
+        # the ``TypeError: got an unexpected keyword argument 'metadata'``
+        # surfaced by older 0.5.x wheels and translate it into a clear,
+        # actionable ValueError the LLM can act on (upgrade agentmail or
+        # call update_inbox with display_name= instead).
         try:
             inbox = await client.client.inboxes.update(**kwargs)
         except TypeError as e:
-            if "metadata" in str(e) and "unexpected keyword argument" in str(e):
+            msg = str(e)
+            if "metadata" in msg and "unexpected keyword argument" in msg:
+                # Translate the TypeError into an actionable ValueError
+                # WITHOUT leaking the raw SDK error string — that would
+                # confuse the LLM into thinking the bug is in *its*
+                # input. The chained __cause__ preserves the diagnostic
+                # in the traceback for server-side operators.
                 raise ValueError(
                     "update_inbox was called with metadata, but the "
-                    "installed agentmail SDK rejected the call at runtime "
-                    f"({e}). Upgrade agentmail to a wheel that ships the "
-                    "`metadata` kwarg on `inboxes.update`, or call "
-                    "update_inbox with display_name=... instead."
-                ) from e
+                    "installed agentmail SDK does not support the "
+                    "``metadata`` kwarg on ``inboxes.update``. "
+                    "Upgrade agentmail to a wheel that ships the kwarg, "
+                    "or call update_inbox with display_name=... instead."
+                ) from None
             raise
         return client.format_response(inbox)
 
