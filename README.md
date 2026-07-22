@@ -116,6 +116,43 @@ in the LLM client.
 All exceptions are sanitized; details live in the server stderr output.
 Run with `--debug` for verbose logging.
 
+### Error response shape (0.3.4+)
+When a mutational tool hits an upstream validation error, the JSON
+envelope surfaces the actionable message in three places so the LLM
+can react without guesswork:
+
+```json
+{
+  "status": "error",
+  "code": 400,
+  "tool": "mail_update_inbox",
+  "affected": {"inbox_id": "billkopp@agentmail.to"},
+  "message": "Bad request — check the parameters provided. Upstream: Display name contains invalid character(s): ( ) at display_name",
+  "upstream_details": [
+    "Display name contains invalid character(s): ( ) at display_name"
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `code` | HTTP status from upstream (or a tool-local code like `VALIDATION`). |
+| `tool` | The MCP tool that raised (S5 — was added in 0.3.1). |
+| `affected` | Dict of IDs relevant to the failure (e.g. `{inbox_id}`, `{draft_id}`). |
+| `upstream_details` | Structured list, max 3 messages; each is the human-readable upstream message + the field path it refers to. New in 0.3.4. |
+| `message` | Human-friendly wrapper that may also embed `Upstream: …` snippets for legacy string-only endpoints. |
+
+Two intentional safeguards also fire **before** the API is called:
+
+- `mail_update_inbox(display_name)` rejects any input containing `(`
+  or `)` locally with an actionable `ValueError`. The AgentMail
+  upstream silently rejects those characters with a 400 most agents
+  cannot decipher — this short-circuit avoids the round-trip and
+  tells the LLM exactly which character to remove.
+- `mail_send_draft`, `mail_update_thread`, `mail_update_message`,
+  `mail_mark_thread_read` all reject empty-body requests locally
+  (Bugs A, R1, R3). Don't worry — the handler will tell you.
+
 ## 🔁 Migration from 0.0.x
 
 | Change | Action |
@@ -128,19 +165,33 @@ Run with `--debug` for verbose logging.
 
 ---
 
-## �️ Recent Maintenance (0.3.x)
+## 🛠️ Recent Maintenance (0.3.x)
 
 The 0.3.x line tightens the contract with the upstream AgentMail API
-and stamps out two categories of bugs:
+and stamps out three categories of bugs:
 
-1. **Wire-level contract** (Bugs A–D, 2026-07-21 incident): four MCP
-   tools were silently posting empty bodies or using labels that the
-   upstream rejects. Fixed at the handler layer and end-to-end
-   (`tests/test_mcp_transport_contract.py`). No action required.
+1. **Wire-level contract** (Bugs A–D, 2026-07-21 incident, fixed in
+   0.3.1 + 0.3.2): four MCP tools were silently posting empty bodies
+   or using labels that the upstream rejects. Fixed at the handler
+   layer and end-to-end (`tests/test_mcp_transport_contract.py`). No
+   action required.
 2. **Connection lifecycle** (0.3.2): the lifespan's `aclose()` now
    closes the real `httpx.AsyncClient` two levels below
    `AsyncAgentMail`, draining connection pools cleanly instead of
    leaking them silently. No action required.
+3. **Upstream error surfacing + client-side validation** (0.3.4): the
+   server used to echo generic 400 ("Bad request — check the
+   parameters provided") without telling the LLM what failed. It now
+   parses the upstream Pydantic `ValidationErrorResponse` and
+   surfaces per-field messages (`upstream_details` list, max 3)
+   alongside the human-readable wrapper. In addition, the
+   `mail_update_inbox` handler rejects `display_name` containing `(`
+   or `)` locally with a clear, actionable `ValueError` before
+   paying a round-trip — the upstream rejects those characters with
+   the cryptic message "Display name contains invalid character(s):
+   ( )", which the average LLM cannot derive on its own. The Bug D
+   residual from the Nanobot 2026-07-22 10:41 UTC report is now fully
+   resolved.
 
 See `CHANGELOG.md` for the full history.
 
