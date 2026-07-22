@@ -4,6 +4,45 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
+## [0.3.1] — 2026-07-21
+
+### Fixed (discovered live-testing on 2026-07-22; complements the 0.3.0
+incident response)
+
+- **`mail_send_draft` — `sent` is a system label.** The 0.3.0 fix used
+  ``add_labels=["sent"]`` to avoid an empty body. The AgentMail upstream
+  rejects system labels ("sent", "received", "unread", "draft", "read")
+  with HTTP 400 "Cannot use system label". The handler now sends the
+  custom sentinel ``add_labels=["mcp-sent"]`` (overridable by the
+  caller) and surfaces a clearer error message to the LLM.
+- **`mail_mark_thread_read` — same system-label issue.** Reading /
+  unreading a thread now adds/removes the custom sentinel
+  ``mcp-read`` instead of the system ``read`` label.
+- **`mail_update_thread` (Bug R1).** Same empty-body issue as Bug C
+  (2026-07-21). The handler now requires at least one of
+  ``add_labels`` / ``remove_labels`` and rejects the call locally with a
+  clear error message before hitting the API.
+- **`mail_update_draft` (Bug R2).** The handler accepted 0 mutable
+  fields and silently sent ``{}`` to the upstream, which rejected with
+  HTTP 400. The handler now requires at least one of
+  ``to / subject / text / html / send_at / add_labels / remove_labels``.
+  Removed `@retryable` from `create_draft` / `send_draft` because the
+  SDK has no idempotency key and retrying could produce duplicate drafts
+  or duplicate dispatches.
+- **Server shutdown — `AsyncAgentMail' object has no attribute 'aclose'`
+  (Bug R4).** Discovered during integration: the SDK does NOT expose
+  ``aclose()`` on the top-level instance. The httpx client lives at
+  ``wrapper.client._client_wrapper.httpx_client``. Added
+  ``AgentMailClientWrapper.aclose()`` which closes the underlying httpx
+  client safely; the lifespan now uses it instead of crashing.
+
+### Internal
+
+- Migration of `threads.update(messages)` to `mail_mark_thread_read`'s
+  custom sentinel (`mcp-read` instead of `read`) — test updated.
+- Migration of `mail_send_draft` test fixtures to expect `mcp-sent`.
+- Coverage threshold --cov-fail-under=80 preserved (now 91.74%).
+
 ## [0.3.0] — 2026-07-21
 
 ### Fixed (reported by nanobot live-testing on 2026-07-21, see

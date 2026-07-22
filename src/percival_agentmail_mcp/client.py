@@ -187,6 +187,24 @@ class AgentMailClientWrapper:
         self.client = AsyncAgentMail(api_key=api_key, timeout=timeout)
         self._limiter = RateLimiter(max_calls=30, window_seconds=60.0)
 
+    async def aclose(self) -> None:
+        """Drain the underlying httpx client held by the SDK.
+
+        The ``AsyncAgentMail`` class does NOT expose ``aclose()`` itself;
+        the httpx client lives at ``self.client._client_wrapper.httpx_client``.
+        We close it here to release connections when the lifespan ends.
+        """
+        wrapper = getattr(self.client, "_client_wrapper", None)
+        if wrapper is None:
+            return
+        # Public attribute on AsyncClientWrapper in agentmail-sdk 0.5.x.
+        httpx_client = getattr(wrapper, "httpx_client", None)
+        if httpx_client is None:
+            return
+        aclose_attr = getattr(httpx_client, "aclose", None)
+        if callable(aclose_attr):
+            await aclose_attr()
+
     def _serialize(self, obj: Any) -> Any:
         """Serialize SDK objects (Pydantic models) to JSON-friendly dicts.
 

@@ -8,6 +8,12 @@ from percival_agentmail_mcp.constants import MAX_RESULTS_CAP
 from percival_agentmail_mcp.decorators import retryable, with_agentmail
 from percival_agentmail_mcp.helpers import build_kwargs, cap_limit, normalize_list
 
+# Sentinel labels (prefixed with "mcp-") that the upstream AgentMail
+# labels endpoints accept. System labels ("sent", "received", "unread",
+# "draft", "read") are reserved and any attempt to add/remove them via
+# the SDK is rejected with HTTP 400 "Cannot use system label".
+_SENT_VIA_MCP_LABEL = "mcp-sent"
+
 
 def register(mcp: FastMCP) -> None:
     # No @retryable on create_draft/send_draft: retrying after a
@@ -88,16 +94,34 @@ def register(mcp: FastMCP) -> None:
         text: str | None = None,
         html: str | None = None,
         send_at: str | None = None,
+        add_labels: list[str] | str | None = None,
+        remove_labels: list[str] | str | None = None,
     ) -> str:
-        """Modifies the contents, recipients, or scheduling parameters of an existing email draft."""
+        """Modifies the contents, recipients, or scheduling parameters of an existing email draft.
+
+        At least one of the optional fields MUST be provided; the
+        AgentMail upstream rejects empty-body PATCH with HTTP 400
+        (residual bug found live on 2026-07-22).
+        """
+        norm_to = normalize_list(to)
+        norm_add = normalize_list(add_labels)
+        norm_rem = normalize_list(remove_labels)
+        if all(v is None for v in (norm_to, subject, text, html, send_at, norm_add, norm_rem)):
+            raise ValueError(
+                "update_draft requires at least one field to update. "
+                "Got all of (to, subject, text, html, send_at, "
+                "add_labels, remove_labels) as None/empty."
+            )
         kwargs = build_kwargs(
             {"inbox_id": config.inbox_id, "draft_id": draft_id},
             {
-                "to": normalize_list(to),
+                "to": norm_to,
                 "subject": subject,
                 "text": text,
                 "html": html,
                 "send_at": send_at,
+                "add_labels": norm_add,
+                "remove_labels": norm_rem,
             },
         )
         return client.format_response(await client.client.inboxes.drafts.update(**kwargs))
@@ -109,18 +133,28 @@ def register(mcp: FastMCP) -> None:
         client: AgentMailClientWrapper,
         config: ServerConfig,
         draft_id: str,
+        add_labels: list[str] | str | None = None,
+        remove_labels: list[str] | str | None = None,
     ) -> str:
         """Immediately dispatches a previously saved email draft.
 
         The AgentMail upstream requires at least one of ``add_labels`` /
-        ``remove_labels`` to be present in the body. We always pass
-        ``add_labels=['sent']`` so the call is accepted (the label is
-        consistent with the message lifecycle: draft → sent).
+        ``remove_labels`` AND rejects system labels ("sent", "received",
+        "unread", "draft", "read") — using one returns HTTP 400
+        "Cannot use system label". To work around both constraints we
+        always pass a sentinel custom label ``mcp-sent`` unless the
+        caller overrides via ``add_labels``/``remove_labels``. The label
+        appears on the resulting message thread and is safe to filter
+        later.
         """
-        return client.format_response(
-            await client.client.inboxes.drafts.send(
-                inbox_id=config.inbox_id,
-                draft_id=draft_id,
-                add_labels=["sent"],
-            )
+        norm_add = normalize_list(add_labels)
+        norm_rem = normalize_list(remove_labels)
+        # Always include our custom sentinel if neither list was provided,
+        # so the call always sends a non-empty labels payload.
+        if not norm_add and not norm_rem:
+            norm_add = [_SENT_VIA_MCP_LABEL]
+        kwargs = build_kwargs(
+            {"inbox_id": config.inbox_id, "draft_id": draft_id},
+            {"add_labels": norm_add, "remove_labels": norm_rem},
         )
+        return client.format_response(await client.client.inboxes.drafts.send(**kwargs))

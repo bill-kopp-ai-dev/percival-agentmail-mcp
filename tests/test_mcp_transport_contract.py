@@ -94,7 +94,9 @@ def contract_context(respx_mock) -> _FakeMCPContext:  # noqa: ARG001
 
 @pytest.mark.asyncio
 async def test_mail_send_draft_includes_add_labels(contract_context) -> None:
-    """Bug A: drafts.send body must contain add_labels (the upstream rejects {})."""
+    """Bug A + residual R1: drafts.send body must contain add_labels (the
+    upstream rejects {} and rejects system labels like 'sent').
+    """
     server = _build_server(contract_context)
 
     with respx.mock(base_url="https://api.agentmail.to") as rmock:
@@ -105,7 +107,10 @@ async def test_mail_send_draft_includes_add_labels(contract_context) -> None:
         body = route.calls[0].request.content.decode()
         assert "add_labels" in body, f"Body must include add_labels, got: {body}"
         parsed_body = json.loads(body)
-        assert parsed_body["add_labels"] == ["sent"]
+        # After 2026-07-22 fix the sentinel is 'mcp-sent' (custom label)
+        # NOT 'sent' (system label rejected by upstream).
+        assert parsed_body["add_labels"] == ["mcp-sent"]
+        assert "sent" not in parsed_body["add_labels"]
         # Tool result should be JSON containing the message_id
         out = json.loads(result)
         assert out["message_id"] == "msg_x"

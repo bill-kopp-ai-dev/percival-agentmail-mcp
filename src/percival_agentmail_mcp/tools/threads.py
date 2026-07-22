@@ -66,13 +66,23 @@ def register(mcp: FastMCP) -> None:
         add_labels: list[str] | str | None = None,
         remove_labels: list[str] | str | None = None,
     ) -> str:
-        """Modifies metadata for an entire conversation thread, allowing batch addition or removal of labels across all associated messages."""
+        """Modifies metadata for an entire conversation thread, allowing batch addition or removal of labels across all associated messages.
+
+        At least one of ``add_labels`` or ``remove_labels`` MUST be
+        provided — the AgentMail upstream rejects empty-body PATCH with
+        HTTP 400 (same shape as Bug C found in 2026-07-21 incident).
+        """
+        norm_add = normalize_list(add_labels)
+        norm_rem = normalize_list(remove_labels)
+        if not norm_add and not norm_rem:
+            raise ValueError(
+                "update_thread requires at least one of `add_labels` or "
+                "`remove_labels` to be a non-empty list. "
+                f"Got add_labels={add_labels!r}, remove_labels={remove_labels!r}."
+            )
         kwargs = build_kwargs(
             {"inbox_id": config.inbox_id, "thread_id": thread_id},
-            {
-                "add_labels": normalize_list(add_labels),
-                "remove_labels": normalize_list(remove_labels),
-            },
+            {"add_labels": norm_add, "remove_labels": norm_rem},
         )
         return client.format_response(await client.client.inboxes.threads.update(**kwargs))
 
@@ -102,16 +112,23 @@ def register(mcp: FastMCP) -> None:
         thread_id: str,
         read: bool = True,
     ) -> str:
-        """Shortcut: add or remove the 'read' label from a thread.
+        """Shortcut: add or remove a custom read label from a thread.
 
-        When ``read=True`` (default) adds the ``read`` label.
-        When ``read=False`` removes it.
+        When ``read=True`` (default) adds the ``mcp-read`` label.
+        When ``read=False`` removes it. The system ``read`` label cannot
+        be modified through ``threads.update`` (the upstream rejects it
+        with HTTP 400 "Cannot use system label"), so we use a custom
+        sentinel instead.
         """
+        # The AgentMail upstream rejects updates that add/remove system
+        # labels via update(). We use a custom "mcp-read" sentinel.
+        if read:
+            norm_add, norm_rem = ["mcp-read"], None
+        else:
+            norm_add, norm_rem = None, ["mcp-read"]
+        # update_thread already enforces non-empty labels.
         kwargs = build_kwargs(
             {"inbox_id": config.inbox_id, "thread_id": thread_id},
-            {
-                "add_labels": ["read"] if read else None,
-                "remove_labels": None if read else ["read"],
-            },
+            {"add_labels": norm_add, "remove_labels": norm_rem},
         )
         return client.format_response(await client.client.inboxes.threads.update(**kwargs))

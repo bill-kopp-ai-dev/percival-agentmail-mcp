@@ -119,10 +119,13 @@ async def test_delete_thread_returns_error(get_tool, fake_ctx, mock_wrapper) -> 
 
 @pytest.mark.asyncio
 async def test_mark_thread_read_default_adds_label(get_tool, fake_ctx, mock_wrapper) -> None:
+    """Default: adds the custom 'mcp-read' sentinel label. The system
+    'read' label is reserved and would be rejected by the upstream.
+    """
     mock_wrapper.client.inboxes.threads.update = AsyncMock(return_value={"id": "t_1"})
     await get_tool("mail_mark_thread_read")(fake_ctx, thread_id="t_1")
     _, kwargs = mock_wrapper.client.inboxes.threads.update.call_args
-    assert kwargs["add_labels"] == ["read"]
+    assert kwargs["add_labels"] == ["mcp-read"]
     assert "remove_labels" not in kwargs
 
 
@@ -131,5 +134,5 @@ async def test_mark_thread_read_false_removes_label(get_tool, fake_ctx, mock_wra
     mock_wrapper.client.inboxes.threads.update = AsyncMock(return_value={"id": "t_1"})
     await get_tool("mail_mark_thread_read")(fake_ctx, thread_id="t_1", read=False)
     _, kwargs = mock_wrapper.client.inboxes.threads.update.call_args
-    assert kwargs["remove_labels"] == ["read"]
+    assert kwargs["remove_labels"] == ["mcp-read"]
     assert "add_labels" not in kwargs

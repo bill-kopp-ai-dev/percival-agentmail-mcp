@@ -143,12 +143,75 @@ async def test_update_draft_partial(get_tool, fake_ctx, mock_wrapper) -> None:
 
 @pytest.mark.asyncio
 async def test_send_draft_success(get_tool, fake_ctx, mock_wrapper, mock_config) -> None:
+    """Default: passing no labels uses the 'mcp-sent' sentinel so the
+    upstream is not sent an empty body. System label 'sent' is rejected
+    by the AgentMail upstream with HTTP 400.
+    """
     mock_wrapper.client.inboxes.drafts.send = AsyncMock(return_value={"id": "msg_x"})
     await get_tool("mail_send_draft")(fake_ctx, draft_id="d_1")
     mock_wrapper.client.inboxes.drafts.send.assert_awaited_once_with(
         inbox_id=mock_config.inbox_id,
         draft_id="d_1",
-        add_labels=["sent"],
+        add_labels=["mcp-sent"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_draft_with_custom_labels(get_tool, fake_ctx, mock_wrapper, mock_config) -> None:
+    """Caller-provided add_labels override the default sentinel."""
+    mock_wrapper.client.inboxes.drafts.send = AsyncMock(return_value={"id": "msg_x"})
+    await get_tool("mail_send_draft")(
+        fake_ctx,
+        draft_id="d_1",
+        add_labels=["urgent", "customer-x"],
+    )
+    mock_wrapper.client.inboxes.drafts.send.assert_awaited_once_with(
+        inbox_id=mock_config.inbox_id,
+        draft_id="d_1",
+        add_labels=["urgent", "customer-x"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_draft_with_remove_labels(get_tool, fake_ctx, mock_wrapper, mock_config) -> None:
+    """remove_labels accepted without forcing the sentinel."""
+    mock_wrapper.client.inboxes.drafts.send = AsyncMock(return_value={"id": "msg_x"})
+    await get_tool("mail_send_draft")(
+        fake_ctx,
+        draft_id="d_1",
+        remove_labels=["stale"],
+    )
+    mock_wrapper.client.inboxes.drafts.send.assert_awaited_once_with(
+        inbox_id=mock_config.inbox_id,
+        draft_id="d_1",
+        remove_labels=["stale"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_draft_rejects_empty_body(get_tool, fake_ctx, mock_wrapper) -> None:
+    """Update with no field must fail clearly without hitting the API."""
+    mock_wrapper.client.inboxes.drafts.update = AsyncMock()
+    result = await get_tool("mail_update_draft")(fake_ctx, draft_id="d_1")
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "at least one field" in parsed["message"].lower()
+    mock_wrapper.client.inboxes.drafts.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_draft_with_subject_only(
+    get_tool,
+    fake_ctx,
+    mock_wrapper,
+    mock_config,
+) -> None:
+    mock_wrapper.client.inboxes.drafts.update = AsyncMock(return_value={"id": "d_1"})
+    await get_tool("mail_update_draft")(fake_ctx, draft_id="d_1", subject="New S")
+    mock_wrapper.client.inboxes.drafts.update.assert_awaited_once_with(
+        inbox_id=mock_config.inbox_id,
+        draft_id="d_1",
+        subject="New S",
     )
 
 

@@ -54,7 +54,7 @@ async def test_lifespan_closes_client_on_shutdown(
     monkeypatch: pytest.MonkeyPatch,
     isolated_env: pytest.MonkeyPatch,
 ) -> None:
-    """O aclose() deve ser chamado exatamente uma vez no shutdown."""
+    """The wrapper's aclose() must be called exactly once on shutdown."""
     from percival_agentmail_mcp import server as server_mod
 
     monkeypatch.setattr(
@@ -68,11 +68,13 @@ async def test_lifespan_closes_client_on_shutdown(
         ),
     )
 
-    fake = _FakeAsyncAgentMail(lambda inbox_id: {"id": inbox_id})
+    fake_wrapper = MagicMock()
+    fake_wrapper.aclose = AsyncMock()
+    fake_wrapper.client = _FakeAsyncAgentMail(lambda inbox_id: {"id": inbox_id})
     monkeypatch.setattr(
         server_mod,
         "AgentMailClientWrapper",
-        lambda api_key, timeout: MagicMock(client=fake),
+        lambda api_key, timeout: fake_wrapper,
     )
 
     agen = server_mod.server_lifespan(None)
@@ -80,7 +82,7 @@ async def test_lifespan_closes_client_on_shutdown(
     assert isinstance(ctx, LifespanContext)
     await agen.__aexit__(None, None, None)
 
-    fake.aclose.assert_awaited_once()
+    fake_wrapper.aclose.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -105,11 +107,14 @@ async def test_lifespan_raises_runtime_error_on_api_failure(
     def boom(inbox_id: str):
         raise ApiError(status_code=401, body="bad key")
 
-    fake = _FakeAsyncAgentMail(boom)
+    fake_client = _FakeAsyncAgentMail(boom)
+    fake_wrapper = MagicMock()
+    fake_wrapper.aclose = AsyncMock()
+    fake_wrapper.client = fake_client
     monkeypatch.setattr(
         server_mod,
         "AgentMailClientWrapper",
-        lambda api_key, timeout: MagicMock(client=fake),
+        lambda api_key, timeout: fake_wrapper,
     )
 
     agen = server_mod.server_lifespan(None)
@@ -117,7 +122,7 @@ async def test_lifespan_raises_runtime_error_on_api_failure(
         await agen.__aenter__()
     assert "Cannot reach AgentMail API" in str(exc.value)
     # aclose() ainda é chamado no caminho de erro
-    fake.aclose.assert_awaited_once()
+    fake_wrapper.aclose.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -150,13 +155,15 @@ async def test_lifespan_retries_health_check_on_503(
     # Build the fake client so that wrapper.client.inboxes.get(...) is a real
     # AsyncMock that calls our flaky coroutine.
     fake_client = MagicMock()
-    fake_client.aclose = AsyncMock()
     fake_client.inboxes = MagicMock()
     fake_client.inboxes.get = AsyncMock(side_effect=flaky_get)
+    fake_wrapper = MagicMock()
+    fake_wrapper.aclose = AsyncMock()
+    fake_wrapper.client = fake_client
     monkeypatch.setattr(
         server_mod,
         "AgentMailClientWrapper",
-        lambda api_key, timeout: MagicMock(client=fake_client),
+        lambda api_key, timeout: fake_wrapper,
     )
 
     # Patch the real with_retry in the client module so the test

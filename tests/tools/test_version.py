@@ -17,11 +17,7 @@ async def test_get_version_returns_required_fields(get_tool, fake_ctx) -> None:
     assert re.match(r"\d+\.\d+\.\d+", parsed["package_version"])
     assert re.match(r"\d+\.\d+\.\d+", parsed["python_version"])
     assert parsed["inbox"] == "agent@agentmail.to"
-    assert (
-        "Linux" in parsed["platform"]
-        or "Darwin" in parsed["platform"]
-        or "Windows" in parsed["platform"]
-    )
+    assert "Linux" in parsed["platform"] or "Darwin" in parsed["platform"] or "Windows" in parsed["platform"]
 
 
 @pytest.mark.asyncio

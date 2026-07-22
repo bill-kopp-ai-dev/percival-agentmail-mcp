@@ -52,13 +52,13 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[LifespanContext]:
     except ApiError as e:
         status = e.status_code if e.status_code is not None else "unknown"
         logger.error("AgentMail health check failed (HTTP %s)", status)
-        await wrapper.client.aclose()
+        await wrapper.aclose()
         raise RuntimeError(
             f"Cannot reach AgentMail API at startup (HTTP {status}). Verify AGENTMAIL_API_KEY and AGENTMAIL_INBOX_ID."
         ) from e
     except Exception:
         logger.error("Unexpected error during AgentMail health check", exc_info=True)
-        await wrapper.client.aclose()
+        await wrapper.aclose()
         raise
 
     try:
@@ -67,7 +67,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[LifespanContext]:
         logger.info("Shutting down AgentMail MCP server...")
         # HIGH-03: fechar explicitamente para drenar conexões
         try:
-            await wrapper.client.aclose()
+            await wrapper.aclose()
         except Exception:
             logger.warning("Error while closing AgentMail client", exc_info=True)
 
