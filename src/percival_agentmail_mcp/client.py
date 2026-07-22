@@ -336,13 +336,52 @@ class AgentMailClientWrapper:
                     f"API error (HTTP {status_code})." if status_code is not None else "API error (no status code)."
                 )
 
-            # S5: if the upstream body has a non-empty string message
-            # other than the generic one, surface it in the LLM response.
+            # S5 / 2026-07-22 — upstream AgentMail responses carry a rich
+            # ``ValidationErrorResponse`` Pydantic model with a per-field
+            # ``errors`` list (e.g. ``Display name contains invalid
+            # character(s): ( )``). Surface the most actionable item to
+            # the LLM so it can react, e.g. "use a display name without
+            # parentheses". Falls back to a plain string body when the
+            # response is not a ValidationErrorResponse model.
+            upstream_messages: list[str] = []
             upstream_body = getattr(e, "body", None)
-            if isinstance(upstream_body, str) and upstream_body.strip():
-                upstream_msg = upstream_body.strip()
-                if upstream_msg and upstream_msg != message:
-                    message = f"{message} Upstream: {upstream_msg[:300]}"
+
+            # 1. Pydantic-typed validation response: collect ``message``
+            #    and the field path it refers to, if any.
+            if upstream_body is not None and hasattr(upstream_body, "errors"):
+                errors_attr = getattr(upstream_body, "errors", None)
+                if errors_attr:
+                    for err in errors_attr:
+                        msg = None
+                        path = None
+                        if isinstance(err, dict):
+                            msg = err.get("message")
+                            path = err.get("path")
+                        else:
+                            msg = getattr(err, "message", None)
+                            path = getattr(err, "path", None)
+                        if not msg:
+                            continue
+                        path_str = ""
+                        if isinstance(path, list) and path:
+                            # path is typically a list of keys/indices,
+                            # e.g. ["display_name"] — pretty-print as
+                            # " at <nested.path>".
+                            path_str = " at " + ".".join(str(p) for p in path)
+                        elif isinstance(path, str) and path:
+                            path_str = " at " + path
+                        upstream_messages.append(f"{msg}{path_str}")
+
+            # 2. Plain string body (older endpoints, plain HTTP errors).
+            if not upstream_messages and isinstance(upstream_body, str) and upstream_body.strip():
+                upstream_messages.append(upstream_body.strip())
+
+            # Cap to 3 messages to keep the response envelope small.
+            if upstream_messages:
+                cap = upstream_messages[:3]
+                joined = " | ".join(cap)
+                if joined and joined not in message:
+                    message = f"{message} Upstream: {joined[:600]}"
 
             payload: dict[str, Any] = {
                 "status": "error",
@@ -352,6 +391,11 @@ class AgentMailClientWrapper:
                 payload["code"] = status_code
             else:
                 payload["code"] = "UNKNOWN"
+            # Surface the structured upstream details to the LLM in a
+            # dedicated key. The LLM can pick which to act on. Keep the
+            # number bounded so the envelope stays small.
+            if upstream_messages:
+                payload["upstream_details"] = upstream_messages[:3]
             return _with_meta(payload)
 
         if isinstance(e, httpx.TimeoutException):

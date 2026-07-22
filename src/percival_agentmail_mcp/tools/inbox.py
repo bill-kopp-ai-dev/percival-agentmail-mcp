@@ -1,5 +1,7 @@
 """Inbox management tools (3 tools)."""
 
+import re
+
 from mcp.server.fastmcp import Context, FastMCP
 
 from percival_agentmail_mcp.client import AgentMailClientWrapper
@@ -8,10 +10,32 @@ from percival_agentmail_mcp.constants import MAX_RESULTS_CAP
 from percival_agentmail_mcp.decorators import retryable, with_agentmail
 from percival_agentmail_mcp.helpers import cap_limit
 
+# Bug D residual — discovered live 2026-07-22 against the
+# agentmail API: it rejects ``display_name`` with the literal
+# characters ``(`` or ``)`` ("Display name contains invalid
+# character(s): ( )" — HTTP 400 ValidationError). The handler
+# short-circuits here so the LLM gets a clear, actionable error
+# instead of a generic Bad-Request echo.
+_DISPLAY_NAME_FORBIDDEN_CHARS = re.compile(r"[()]")
+
 
 def _normalize_display_name(value: str) -> str:
-    """Trim and compress whitespace on a display_name before sending."""
-    return " ".join(value.split())
+    """Trim and compress whitespace on a display_name before sending.
+
+    The AgentMail upstream rejects ``display_name`` containing
+    parentheses ("(" or ")") with HTTP 400. We surface this as a
+    clear ValueError BEFORE paying a round-trip to the API.
+    """
+    trimmed = " ".join(value.split())
+    if _DISPLAY_NAME_FORBIDDEN_CHARS.search(trimmed):
+        raise ValueError(
+            "display_name may not contain '(' or ')'. The AgentMail upstream "
+            "rejects these characters with HTTP 400 'Display name contains "
+            "invalid character(s): ( )'. Remove the parenthesized suffix — "
+            "e.g. 'Nano v2 - MCP Test' instead of 'Nano v2 - MCP Test "
+            "(v0.8.0)'."
+        )
+    return trimmed
 
 
 def register(mcp: FastMCP) -> None:

@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
+## [0.3.4] — 2026-07-22
+
+### Fixed (post-incident follow-up from Nanobot's 10:41 UTC report)
+
+- **`mail_update_inbox` client-side validation**: the AgentMail upstream
+  rejects `display_name` containing `(`, `)` (HTTP 400 "Display name
+  contains invalid character(s): ( )"). We now raise a `ValueError`
+  with an actionable message **before** paying a round-trip to the
+  API, so the LLM gets a clear hint instead of a generic 400 echo.
+- **`format_error` upstream surfacing**: when an `ApiError` body is a
+  Pydantic `ValidationErrorResponse` (rich per-field structure), we now
+  parse `errors[i].message + errors[i].path` and surface the most
+  actionable messages to the LLM both inline (`"Upstream: Display
+  name contains invalid character(s): ( ) at display_name"`) and as a
+  structured `upstream_details` list (capped at 3). Also keeps the
+  plain-string-body fallback path so older endpoints still surface
+  actionable text. Falls back to no `upstream_details` when the
+  response is empty.
+
+### Verified via live smoke against `billkopp@agentmail.to`
+
+| Tool | Pre-fix report | Post-0.3.4 |
+|---|---|---|
+| `mail_send_email` | REGRESSED (400) | ✅ 200 + message_id |
+| `mail_send_draft` | REGRESSED (400) | ✅ 200 + message_id |
+| `mail_create_draft(to=...)` | REGRESSED (400) | ✅ works |
+| `mail_update_inbox(display_name="X (v0.8.0)")` | 400 (Bug D residual) | ✅ actionable error envelope (no round-trip) |
+| `mail_get_status` | online | ✅ online, `api_latency_ms~100` |
+| `mail_list_messages` | 1+ msgs | ✅ (envia + lista normalmente) |
+
+### Tests
+
+- 6 novos tests em `tests/test_format_error_validation.py`
+- 167 → **173 passed**; cobertura 91.33% (target ≥80%).
+
 ## [0.3.3] — 2026-07-22
 
 ### Changed
