@@ -1,6 +1,6 @@
 # 🤖 Percival AgentMail - percival.OS MCP
 
-**Version 0.3.2**
+**Version 0.3.3**
 
 [![Python](https://img.shields.io/badge/python-3.10+-yellow.svg)]()
 [![MCP](https://img.shields.io/badge/mcp-server-blue.svg)]()

@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
+## [0.3.3] — 2026-07-22
+
+### Changed
+
+- **Pinned `agentmail>=0.5.8`** (was `>=0.5.0`). Version 0.5.0 shipped
+  wheels that did NOT accept the `metadata` kwarg on
+  `inboxes.update`, which surfaced in CI 2026-07-22 as a
+  `TypeError: unexpected keyword argument 'metadata'`. We had already
+  fixed the runtime guard (0.3.2) but the cleanest fix is to track an
+  SDK that actually knows about the kwarg.
+- **Sub-projeto `uv.lock` regenerated.** Many transitive deps were
+  out of date (e.g. `certifi 2026.6.17` → `2026.7.22`,
+  `soupsieve 2.9` → `2.9.1`, `protobuf 6.33.6` → `7.35.1`).
+  Re-resolved against fresh `pyproject.toml` in a clean
+  `/tmp/probe-percival` directory (the in-tree `uv lock` was a
+  workspace no-op because `uv` was routing the resolution to the
+  root `uv.lock`).
+- **Verified aligned with workspace root**: `uv lock --check` passes
+  from `/home/bill/Codes/mcp-servers-percival` after the regen.
+
+### Verified
+
+- `uv run pytest --cov` → 167 passed, 91.81% coverage.
+- `uv lock --check` (workspace root) → aligned.
+- Lint + format clean.
+
 ## [0.3.2] — 2026-07-22
 
 ### Fixed (review of the 0.3.0/0.3.1 incident response)
