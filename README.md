@@ -24,7 +24,7 @@ Like all components of `percival.OS`, this MCP server strictly follows our core 
 ---
 
 ## 🚀 Features & Tools
-The server exposes 23 tools optimized for LLM comprehension, divided into:
+The server exposes 24 tools optimized for LLM comprehension, divided into:
 
 - **Inbox:** `mail_get_inbox_info`, `mail_update_inbox`, `mail_list_inbox_events`
 - **Messages:** `mail_send_email` (supports attachments), `mail_list_messages`, `mail_read_message`, `mail_reply_to_message`, `mail_reply_all_message`, `mail_forward_message`, `mail_update_message`, `mail_delete_message`, `mail_get_attachment`

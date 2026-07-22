@@ -190,18 +190,31 @@ class AgentMailClientWrapper:
     async def aclose(self) -> None:
         """Drain the underlying httpx client held by the SDK.
 
-        The ``AsyncAgentMail`` class does NOT expose ``aclose()`` itself;
-        the httpx client lives at ``self.client._client_wrapper.httpx_client``.
-        We close it here to release connections when the lifespan ends.
+        The ``AsyncAgentMail`` class does NOT expose ``aclose()`` itself.
+        Two levels of nesting stand between it and a real, closeable
+        ``httpx.AsyncClient``:
+
+            self.client._client_wrapper            -> AsyncClientWrapper
+                .httpx_client                       -> agentmail's own
+                                                        AsyncHttpClient
+                                                        wrapper (NOT httpx!)
+                    .httpx_client                   -> the actual
+                                                        httpx.AsyncClient
+
+        A previous fix stopped one level too shallow (closing
+        ``AsyncHttpClient``, which has no ``aclose``) — it silently
+        no-op'd instead of crashing, so the underlying connection was
+        never actually released. Verified against agentmail-sdk 0.5.x
+        by walking the live object graph.
         """
-        wrapper = getattr(self.client, "_client_wrapper", None)
-        if wrapper is None:
+        client_wrapper = getattr(self.client, "_client_wrapper", None)
+        if client_wrapper is None:
             return
-        # Public attribute on AsyncClientWrapper in agentmail-sdk 0.5.x.
-        httpx_client = getattr(wrapper, "httpx_client", None)
-        if httpx_client is None:
+        agentmail_http_client = getattr(client_wrapper, "httpx_client", None)
+        if agentmail_http_client is None:
             return
-        aclose_attr = getattr(httpx_client, "aclose", None)
+        real_httpx_client = getattr(agentmail_http_client, "httpx_client", None)
+        aclose_attr = getattr(real_httpx_client, "aclose", None)
         if callable(aclose_attr):
             await aclose_attr()
 

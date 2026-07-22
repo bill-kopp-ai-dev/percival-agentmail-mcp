@@ -67,7 +67,7 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 @pytest.fixture
 def mcp_server():
-    """A real FastMCP server with all 23 tools registered."""
+    """A real FastMCP server with all 24 tools registered."""
     from mcp.server.fastmcp import FastMCP
 
     from percival_agentmail_mcp.tools import register_tools

@@ -3,10 +3,14 @@
 Discovered live on 2026-07-22: when the lifespan context was closed, our
 ``server_lifespan`` called ``wrapper.client.aclose()`` and crashed with
 ``AttributeError: 'AsyncAgentMail' object has no attribute 'aclose'``.
-The SDK holds its httpx client at
-``wrapper.client._client_wrapper.httpx_client`` and exposes no public
-``aclose()``. ``AgentMailClientWrapper.aclose`` was added so the
-lifespan can close connections cleanly without leaking.
+The SDK holds its real ``httpx.AsyncClient`` two levels deep, at
+``wrapper.client._client_wrapper.httpx_client.httpx_client`` — the
+first ``.httpx_client`` is agentmail's own ``AsyncHttpClient`` wrapper,
+which has no ``aclose()`` of its own. A first attempt at this fix
+stopped one level too shallow and silently no-op'd (verified against
+the live agentmail-sdk 0.5.x object graph), leaking the connection
+without raising. ``AgentMailClientWrapper.aclose`` now walks the full
+chain so the lifespan can close connections cleanly without leaking.
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -19,15 +23,51 @@ from percival_agentmail_mcp.client import AgentMailClientWrapper
 @pytest.mark.asyncio
 async def test_wrapper_aclose_calls_underlying_httpx_client() -> None:
     wrapper = AgentMailClientWrapper(api_key="am_test_12345678")
-    # Stub the nested SDK chain
-    fake_httpx = MagicMock()
-    fake_httpx.aclose = AsyncMock()
+    # Stub the nested SDK chain: _client_wrapper.httpx_client is agentmail's
+    # own AsyncHttpClient; ITS .httpx_client is the real httpx.AsyncClient.
+    real_httpx_client = MagicMock()
+    real_httpx_client.aclose = AsyncMock()
+    agentmail_http_client = MagicMock(httpx_client=real_httpx_client)
     wrapper.client = MagicMock()
-    wrapper.client._client_wrapper = MagicMock(httpx_client=fake_httpx)
+    wrapper.client._client_wrapper = MagicMock(httpx_client=agentmail_http_client)
 
     await wrapper.aclose()
 
-    fake_httpx.aclose.assert_awaited_once()
+    real_httpx_client.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_wrapper_aclose_no_ops_when_intermediate_wrapper_lacks_httpx_client() -> None:
+    """Regression: a fix that stops one level too shallow (closing
+    agentmail's own AsyncHttpClient, which has no aclose()) must not
+    raise — but this test also guards against silently "fixing" nothing
+    by asserting the real client's aclose is what actually gets called
+    in the happy path above. Here we only check the no-op is safe when
+    the intermediate object has no further nesting.
+    """
+    wrapper = AgentMailClientWrapper(api_key="am_test_12345678")
+    agentmail_http_client = MagicMock(spec=[])  # no nested .httpx_client
+    wrapper.client = MagicMock()
+    wrapper.client._client_wrapper = MagicMock(httpx_client=agentmail_http_client)
+
+    await wrapper.aclose()  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_wrapper_aclose_closes_the_real_sdk_httpx_client() -> None:
+    """No mocks: exercises the actual agentmail-sdk object graph.
+
+    This is the test that would have caught both the original crash
+    (``AttributeError``) and the follow-up silent no-op (closing the
+    wrong nesting level) — mock-based tests kept passing in both cases
+    because the mock shape didn't match the SDK's real structure.
+    """
+    wrapper = AgentMailClientWrapper(api_key="am_test_12345678")
+    real_httpx_client = wrapper.client._client_wrapper.httpx_client.httpx_client
+
+    assert real_httpx_client.is_closed is False
+    await wrapper.aclose()
+    assert real_httpx_client.is_closed is True
 
 
 @pytest.mark.asyncio

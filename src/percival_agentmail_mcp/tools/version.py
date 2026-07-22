@@ -12,21 +12,10 @@ import sys
 
 from mcp.server.fastmcp import Context, FastMCP
 
+from percival_agentmail_mcp import __version__
 from percival_agentmail_mcp.client import AgentMailClientWrapper
 from percival_agentmail_mcp.config import ServerConfig
 from percival_agentmail_mcp.decorators import with_agentmail
-
-
-def _resolve_package_version() -> str:
-    """Best-effort package version lookup with hardcoded fallback."""
-    try:
-        from importlib.metadata import PackageNotFoundError, version
-
-        return version("percival-agentmail-mcp")
-    except (PackageNotFoundError, Exception):
-        from percival_agentmail_mcp import __version__
-
-        return __version__
 
 
 def register(mcp: FastMCP) -> None:
@@ -40,7 +29,7 @@ def register(mcp: FastMCP) -> None:
         """Returns server version metadata: package_version, server_name, python_version, platform, inbox."""
         return json.dumps(
             {
-                "package_version": _resolve_package_version(),
+                "package_version": __version__,
                 "server_name": "percival-agentmail-mcp",
                 "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
                 "platform": platform.platform(),
