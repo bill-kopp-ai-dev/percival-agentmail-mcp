@@ -227,14 +227,20 @@ async def test_mail_update_inbox_succeeds_with_metadata(contract_context) -> Non
     """Bug D (positive case): metadata alone is enough."""
     server = _build_server(contract_context)
 
-    with respx.mock(base_url="https://api.agentmail.to") as rmock:
-        route = rmock.patch("/v0/inboxes/agent@agentmail.to").respond(200, json={"inbox_id": "x"})
+    # ``assert_all_called=False`` to avoid a RESPX-all-mocked assertion
+    # if any stray traffic (e.g. health-check from another test) hits
+    # the wire. The mock below must match the actual PATCH the handler
+    # emits; we use a regex so trailing slashes / encoding don't throw
+    # off the matcher.
+    with respx.mock(base_url="https://api.agentmail.to", assert_all_called=False) as rmock:
+        route = rmock.patch(url__regex=r"/v0/inboxes/[^/]+$").respond(200, json={"inbox_id": "agent@agentmail.to"})
         await _invoke(
             server,
             contract_context,
             "mail_update_inbox",
             {"metadata": {"team": "ops"}},
         )
+        assert route.called, "PATCH /v0/inboxes/<id> was not called by the handler"
         body = json.loads(route.calls[0].request.content.decode())
         assert body == {"metadata": {"team": "ops"}}
 
