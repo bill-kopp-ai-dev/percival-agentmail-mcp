@@ -224,25 +224,43 @@ async def test_mail_update_inbox_succeeds_with_display_name(contract_context) ->
 
 @pytest.mark.asyncio
 async def test_mail_update_inbox_succeeds_with_metadata(contract_context) -> None:
-    """Bug D (positive case): metadata alone is enough."""
+    """Bug D (positive case): metadata alone is enough — when supported.
+
+    Different 0.5.x SDK wheels ship with and without the ``metadata``
+    kwarg on ``inboxes.update``. The handler probes via
+    ``_sdk_supports_metadata`` and returns a clear error when not
+    supported. On both branches this test must NOT flake on CI.
+    """
+    from percival_agentmail_mcp.tools.inbox import _sdk_supports_metadata
+
     server = _build_server(contract_context)
 
-    # ``assert_all_called=False`` to avoid a RESPX-all-mocked assertion
-    # if any stray traffic (e.g. health-check from another test) hits
-    # the wire. The mock below must match the actual PATCH the handler
-    # emits; we use a regex so trailing slashes / encoding don't throw
-    # off the matcher.
+    # ``assert_all_called=False`` plus ``url__regex`` avoids a
+    # response-method assertion error if any stray traffic hits the
+    # wire and tolerates trailing slashes / encoding differences.
     with respx.mock(base_url="https://api.agentmail.to", assert_all_called=False) as rmock:
         route = rmock.patch(url__regex=r"/v0/inboxes/[^/]+$").respond(200, json={"inbox_id": "agent@agentmail.to"})
-        await _invoke(
+        result = await _invoke(
             server,
             contract_context,
             "mail_update_inbox",
             {"metadata": {"team": "ops"}},
         )
+
+    out = json.loads(result)
+    if _sdk_supports_metadata():
+        # The success path returns the serialized Inbox object (no envelope)
+        assert "inbox_id" in out, f"expected Inbox-like response on success path; got: {out}"
         assert route.called, "PATCH /v0/inboxes/<id> was not called by the handler"
         body = json.loads(route.calls[0].request.content.decode())
         assert body == {"metadata": {"team": "ops"}}
+    else:
+        # The handler raised ValueError before hitting the API; ensure
+        # the error envelope tells the LLM to upgrade ``agentmail``.
+        assert out.get("status") == "error"
+        assert "metadata" in out.get("message", "").lower()
+        assert "agentmail" in out.get("message", "").lower()
+        assert not route.called, "PATCH must not be called when SDK doesn't accept metadata"
 
 
 # ---------------------------------------------------------------------------
