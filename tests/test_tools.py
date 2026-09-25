@@ -50,7 +50,9 @@ def test_wrapper_serialization_primitive(wrapper):
 def test_wrapper_format_response_json(wrapper):
     """format_response should produce valid JSON."""
     data = {"id": "msg_123", "subject": "Test"}
-    result = wrapper.format_response(data)
+    import asyncio as _asyncio
+
+    result = _asyncio.run(wrapper.format_response(data))
     parsed = json.loads(result)
     assert parsed["id"] == "msg_123"
 

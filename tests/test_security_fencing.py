@@ -1,5 +1,6 @@
 """Tests for HIGH-01 content fencing (expanded to all external fields)."""
 
+import asyncio
 import copy
 import json
 
@@ -99,6 +100,6 @@ def test_fence_skips_non_string_values(wrapper: AgentMailClientWrapper) -> None:
 
 def test_format_fenced_returns_valid_json(wrapper: AgentMailClientWrapper) -> None:
     payload = {"text": "secret", "subject": "S"}
-    out = wrapper.format_fenced(payload)
+    out = asyncio.run(wrapper.format_fenced(payload))
     parsed = json.loads(out)
     assert AgentMailClientWrapper.CONTENT_FENCE_START in parsed["text"]

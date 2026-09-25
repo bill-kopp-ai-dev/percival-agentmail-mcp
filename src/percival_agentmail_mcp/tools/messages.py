@@ -16,7 +16,13 @@ from percival_agentmail_mcp.constants import (
     MAX_RESULTS_CAP,
 )
 from percival_agentmail_mcp.decorators import retryable, with_agentmail
-from percival_agentmail_mcp.helpers import build_kwargs, cap_limit, normalize_list
+from percival_agentmail_mcp.helpers import (
+    assert_no_system_labels,
+    assert_non_empty,
+    build_kwargs,
+    cap_limit,
+    normalize_list,
+)
 
 
 def _validate_attachments(attachments: list[dict] | None) -> None:
@@ -86,10 +92,14 @@ def register(mcp: FastMCP) -> None:
         Maximum total base64 size: 20 MB.
         """
         _validate_attachments(attachments)
+        norm_to = normalize_list(to)
+        assert_non_empty(norm_to, field="to")
+        assert_non_empty(subject, field="subject")
+        assert_non_empty(text, field="text")
         kwargs = build_kwargs(
             {
                 "inbox_id": config.inbox_id,
-                "to": normalize_list(to),
+                "to": norm_to,
                 "subject": subject,
                 "text": text,
             },
@@ -101,7 +111,7 @@ def register(mcp: FastMCP) -> None:
             },
         )
         result = await client.client.inboxes.messages.send(**kwargs)
-        return client.format_response(result)
+        return await client.format_response(result)
 
     @mcp.tool("mail_list_messages")
     @with_agentmail
@@ -126,7 +136,7 @@ def register(mcp: FastMCP) -> None:
             {"labels": normalize_list(labels), "page_token": page_token},
         )
         result = await client.client.inboxes.messages.list(**kwargs)
-        return client.format_response(result)
+        return await client.format_response(result)
 
     @mcp.tool("mail_read_message")
     @with_agentmail
@@ -146,7 +156,7 @@ def register(mcp: FastMCP) -> None:
             inbox_id=config.inbox_id,
             message_id=message_id,
         )
-        return client.format_fenced(result)
+        return await client.format_fenced(result)
 
     @mcp.tool("mail_reply_to_message")
     @with_agentmail
@@ -163,7 +173,7 @@ def register(mcp: FastMCP) -> None:
             {"inbox_id": config.inbox_id, "message_id": message_id, "text": text},
             {"html": html},
         )
-        return client.format_response(await client.client.inboxes.messages.reply(**kwargs))
+        return await client.format_response(await client.client.inboxes.messages.reply(**kwargs))
 
     @mcp.tool("mail_reply_all_message")
     @with_agentmail
@@ -180,7 +190,7 @@ def register(mcp: FastMCP) -> None:
             {"inbox_id": config.inbox_id, "message_id": message_id, "text": text},
             {"html": html},
         )
-        return client.format_response(await client.client.inboxes.messages.reply_all(**kwargs))
+        return await client.format_response(await client.client.inboxes.messages.reply_all(**kwargs))
 
     @mcp.tool("mail_forward_message")
     @with_agentmail
@@ -200,16 +210,18 @@ def register(mcp: FastMCP) -> None:
         ``to`` because the upstream rejects calls with an empty body
         (Bug B in the 2026-07-21 incident report).
         """
+        norm_to = normalize_list(to)
+        assert_non_empty(norm_to, field="to")
         kwargs = build_kwargs(
             {
                 "inbox_id": config.inbox_id,
                 "message_id": message_id,
-                "to": normalize_list(to),
+                "to": norm_to,
                 "labels": ["forwarded"],
             },
             {"text": text, "html": html},
         )
-        return client.format_response(await client.client.inboxes.messages.forward(**kwargs))
+        return await client.format_response(await client.client.inboxes.messages.forward(**kwargs))
 
     @mcp.tool("mail_update_message")
     @with_agentmail
@@ -239,11 +251,13 @@ def register(mcp: FastMCP) -> None:
                 "`remove_labels` to be a non-empty list. "
                 f"Got add_labels={add_labels!r}, remove_labels={remove_labels!r}."
             )
+        assert_no_system_labels(norm_add, field="add_labels", tool="mail_update_message")
+        assert_no_system_labels(norm_rem, field="remove_labels", tool="mail_update_message")
         kwargs = build_kwargs(
             {"inbox_id": config.inbox_id, "message_id": message_id},
             {"add_labels": norm_add, "remove_labels": norm_rem},
         )
-        return client.format_response(await client.client.inboxes.messages.update(**kwargs))
+        return await client.format_response(await client.client.inboxes.messages.update(**kwargs))
 
     @mcp.tool("mail_delete_message")
     @with_agentmail
@@ -280,4 +294,4 @@ def register(mcp: FastMCP) -> None:
             message_id=message_id,
             attachment_id=attachment_id,
         )
-        return client.format_response(result)
+        return await client.format_response(result)

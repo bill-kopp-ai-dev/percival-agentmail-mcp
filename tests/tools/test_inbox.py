@@ -127,3 +127,38 @@ async def test_list_inbox_events_returns_error(get_tool, fake_ctx, mock_wrapper)
     result = await get_tool("mail_list_inbox_events")(fake_ctx)
     parsed = json.loads(result)
     assert parsed["status"] == "error"
+
+
+# --- Hardening: metadata type-check ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_inbox_rejects_non_dict_metadata(get_tool, fake_ctx, mock_wrapper) -> None:
+    """``metadata`` must be a JSON object (dict); reject scalars and
+    other shapes client-side so the LLM gets a clear hint instead of
+    an opaque Pydantic ValidationError from the SDK.
+    """
+    mock_wrapper.client.inboxes.update = AsyncMock()
+    result = await get_tool("mail_update_inbox")(fake_ctx, metadata="ops")
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "metadata" in parsed["message"].lower()
+    assert "dict" in parsed["message"].lower() or "json object" in parsed["message"].lower()
+    mock_wrapper.client.inboxes.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_inbox_rejects_list_metadata(get_tool, fake_ctx, mock_wrapper) -> None:
+    mock_wrapper.client.inboxes.update = AsyncMock()
+    result = await get_tool("mail_update_inbox")(fake_ctx, metadata=["team", "ops"])
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    mock_wrapper.client.inboxes.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_inbox_accepts_dict_metadata(get_tool, fake_ctx, mock_wrapper, mock_config) -> None:
+    """Happy path: a dict metadata passes the type check and reaches the SDK."""
+    mock_wrapper.client.inboxes.update = AsyncMock(return_value={"id": mock_config.inbox_id})
+    await get_tool("mail_update_inbox")(fake_ctx, metadata={"team": "ops"})
+    mock_wrapper.client.inboxes.update.assert_awaited_once_with(inbox_id=mock_config.inbox_id, metadata={"team": "ops"})

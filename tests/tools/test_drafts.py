@@ -240,3 +240,72 @@ async def test_create_draft_does_not_retry_on_503(get_tool, fake_ctx, mock_wrapp
     mock_wrapper.client.inboxes.drafts.create = AsyncMock(side_effect=ApiError(status_code=503, body="down"))
     await get_tool("mail_create_draft")(fake_ctx, to=["a@example.com"], subject="Hi", text="Body")
     assert mock_wrapper.client.inboxes.drafts.create.await_count == 1
+
+
+# --- Hardening: system-label blocklist & recipient non-empty ---------------
+
+
+@pytest.mark.asyncio
+async def test_send_draft_rejects_system_labels(get_tool, fake_ctx, mock_wrapper) -> None:
+    """System labels like 'sent', 'read', 'unread' are rejected by the
+    AgentMail upstream with HTTP 400 'Cannot use system label'. The
+    handler must translate this into a clear client-side error BEFORE
+    paying a round-trip to the API.
+    """
+    mock_wrapper.client.inboxes.drafts.send = AsyncMock()
+    result = await get_tool("mail_send_draft")(fake_ctx, draft_id="d_1", add_labels=["sent", "important"])
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "'sent'" in parsed["message"]
+    assert "Cannot use system label" in parsed["message"]
+    mock_wrapper.client.inboxes.drafts.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_draft_rejects_system_labels(get_tool, fake_ctx, mock_wrapper) -> None:
+    mock_wrapper.client.inboxes.drafts.update = AsyncMock()
+    result = await get_tool("mail_update_draft")(fake_ctx, draft_id="d_1", add_labels=["draft"])
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "'draft'" in parsed["message"]
+    mock_wrapper.client.inboxes.drafts.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_draft_rejects_empty_to(get_tool, fake_ctx, mock_wrapper) -> None:
+    """Empty recipients list is rejected client-side instead of being
+    passed to the SDK (which might accept it and send to nobody).
+    """
+    mock_wrapper.client.inboxes.drafts.create = AsyncMock()
+    result = await get_tool("mail_create_draft")(fake_ctx, to=[], subject="Hi", text="Body")
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "to" in parsed["message"].lower()
+    mock_wrapper.client.inboxes.drafts.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_draft_rejects_empty_string_to(get_tool, fake_ctx, mock_wrapper) -> None:
+    mock_wrapper.client.inboxes.drafts.create = AsyncMock()
+    result = await get_tool("mail_create_draft")(fake_ctx, to="   ", subject="Hi", text="Body")
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    mock_wrapper.client.inboxes.drafts.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_draft_rejects_empty_subject(get_tool, fake_ctx, mock_wrapper) -> None:
+    mock_wrapper.client.inboxes.drafts.create = AsyncMock()
+    result = await get_tool("mail_create_draft")(fake_ctx, to=["a@example.com"], subject="   ", text="Body")
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    mock_wrapper.client.inboxes.drafts.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_draft_rejects_empty_text(get_tool, fake_ctx, mock_wrapper) -> None:
+    mock_wrapper.client.inboxes.drafts.create = AsyncMock()
+    result = await get_tool("mail_create_draft")(fake_ctx, to=["a@example.com"], subject="Hi", text="")
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    mock_wrapper.client.inboxes.drafts.create.assert_not_called()

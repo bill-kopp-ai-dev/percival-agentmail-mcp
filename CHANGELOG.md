@@ -4,6 +4,93 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
+## [0.3.5] — 2026-09-25
+
+### Changed
+
+- **Bumped `agentmail` SDK to `>=2.0.4`** (was `>=0.5.8`). The upstream
+  Python SDK jumped the major version from 0.6.0 to 2.0.1 on
+  2026-09-18 and released 2.0.4 on 2026-09-25 (today). The latest
+  stable AgentMail API path remains `https://api.agentmail.to/v0/`
+  (only version publicly exposed on <https://docs.agentmail.to/api-reference>),
+  so no public contract change. The SDK 2.x line tracks the
+  September 2026 API additions documented in
+  <https://docs.agentmail.to/changelog.md> (signed CDN download
+  disposition, account enable/disable, inbox metadata, full-text
+  search, AgentID public-key auth, scoped webhooks, usage metrics).
+- **`uv.lock` regenerated**: `agentmail` 0.5.8 → 2.0.4, with the
+  expected transitive updates (`httpx`, `pydantic`, `pydantic-core`,
+  `typing-inspection`, `websockets`, `idna`).
+
+### Fixed (full code-review pass)
+
+Discovered during a thorough code-review of the 0.3.4 → 0.3.5 line.
+None of these are visible at the MCP tool contract layer (the 24
+tools + 3 prompts are preserved); all changes are defense-in-depth
+or hardening that turn client-side errors that would otherwise
+round-trip to the API into clear, immediate LLM-actionable messages.
+
+- **`RateLimiter.acquire` no longer blocks the asyncio event loop**
+  (`client.py`). The previous implementation called `time.sleep`
+  under a `threading.Lock`, which froze the entire FastMCP server
+  for up to a full window when the local rate limit was reached —
+  turning a defensive throttle into a denial-of-service against the
+  server itself. `acquire` is now `async`, uses
+  `asyncio.Lock` + `await asyncio.sleep(...)`, and `format_response`
+  / `format_fenced` were made `async` accordingly. All tool handlers
+  already used `await` on those methods, so the public-tool surface
+  is unchanged.
+- **System-label blocklist enforced client-side** (`helpers.py`,
+  `tools/{drafts,messages,threads}.py`). Caller-supplied
+  `add_labels` / `remove_labels` containing any of `"sent"`,
+  `"received"`, `"unread"`, `"draft"`, `"read"` now raises a clear
+  `ValueError` *before* hitting the upstream (which would otherwise
+  return HTTP 400 "Cannot use system label"). The blocklist is
+  centralized in `constants.SYSTEM_LABELS` and the helper
+  `helpers.assert_no_system_labels` emits the tool name and field
+  name in the error message so the LLM can attribute and correct it
+  on the first try. Applied uniformly to `mail_send_draft`,
+  `mail_update_draft`, `mail_update_message`, and
+  `mail_update_thread`.
+- **`mail_update_inbox.metadata` is now type-checked client-side**
+  (`tools/inbox.py`). Non-dict input (string, list, scalar) used to
+  produce an opaque Pydantic `ValidationError` from the SDK; the
+  handler now emits an actionable `ValueError` explaining that
+  `metadata` must be a JSON object (`dict`).
+- **Recipient lists must be non-empty for `mail_send_email`,
+  `mail_send_draft`, `mail_create_draft`, `mail_forward_message`**
+  (`helpers.assert_non_empty`). Empty lists, empty strings, and
+  whitespace-only strings are rejected up front with a clear
+  message instead of being passed to the SDK (which may accept
+  them and dispatch to nobody).
+- **`cap_limit` accepts non-int input gracefully** (`helpers.py`). A
+  string or other non-int limit previously raised `TypeError` from
+  the `limit < 1` comparison; it now falls back to the default
+  silently.
+- **`format_error` truncation now appends "…"** (`client.py`). When
+  the joined upstream body string exceeds the 600-char safety cap
+  on the inline `message` field, the LLM now sees `Upstream: …` so
+  it knows the message was cut. Under the cap, behaviour is
+  unchanged.
+
+### Internal
+
+- `format_response`, `format_fenced` are now `async`. The decorators
+  and lifecycle are unaffected; this is a pure async refactor
+  driven by the rate-limiter fix.
+- New shared helpers in `helpers.py`: `assert_no_system_labels`,
+  `assert_non_empty`, plus a defensive `isinstance(limit, int)` guard
+  in `cap_limit`.
+- New constant `SYSTEM_LABELS` in `constants.py` documenting which
+  labels the upstream rejects.
+- New regression file `tests/test_hardening_fixes.py` (31 tests)
+  exercising every fix above.
+
+### Tests
+
+- 173 → **220 passed**; coverage 91.33% → 92.01% (target ≥80%).
+- `uv run ruff check .` and `uv run ruff format --check .` green.
+
 ## [0.3.4] — 2026-07-22
 
 ### Fixed (post-incident follow-up from Nanobot's 10:41 UTC report)

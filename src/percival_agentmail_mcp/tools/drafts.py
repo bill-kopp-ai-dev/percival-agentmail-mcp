@@ -6,7 +6,13 @@ from percival_agentmail_mcp.client import AgentMailClientWrapper
 from percival_agentmail_mcp.config import ServerConfig
 from percival_agentmail_mcp.constants import MAX_RESULTS_CAP
 from percival_agentmail_mcp.decorators import retryable, with_agentmail
-from percival_agentmail_mcp.helpers import build_kwargs, cap_limit, normalize_list
+from percival_agentmail_mcp.helpers import (
+    assert_no_system_labels,
+    assert_non_empty,
+    build_kwargs,
+    cap_limit,
+    normalize_list,
+)
 
 # Sentinel labels (prefixed with "mcp-") that the upstream AgentMail
 # labels endpoints accept. System labels ("sent", "received", "unread",
@@ -34,16 +40,20 @@ def register(mcp: FastMCP) -> None:
         """Saves a new email draft without sending it.
         You can optionally schedule the email to be sent automatically at a future date by providing a 'send_at' timestamp in ISO 8601 format.
         """
+        norm_to = normalize_list(to)
+        assert_non_empty(norm_to, field="to")
+        assert_non_empty(subject, field="subject")
+        assert_non_empty(text, field="text")
         kwargs = build_kwargs(
             {
                 "inbox_id": config.inbox_id,
-                "to": normalize_list(to),
+                "to": norm_to,
                 "subject": subject,
                 "text": text,
             },
             {"html": html, "send_at": send_at},
         )
-        return client.format_response(await client.client.inboxes.drafts.create(**kwargs))
+        return await client.format_response(await client.client.inboxes.drafts.create(**kwargs))
 
     @mcp.tool("mail_list_drafts")
     @with_agentmail
@@ -63,7 +73,7 @@ def register(mcp: FastMCP) -> None:
             },
             {"page_token": page_token},
         )
-        return client.format_response(await client.client.inboxes.drafts.list(**kwargs))
+        return await client.format_response(await client.client.inboxes.drafts.list(**kwargs))
 
     @mcp.tool("mail_get_draft")
     @with_agentmail
@@ -79,7 +89,7 @@ def register(mcp: FastMCP) -> None:
             inbox_id=config.inbox_id,
             draft_id=draft_id,
         )
-        return client.format_response(result)
+        return await client.format_response(result)
 
     @mcp.tool("mail_update_draft")
     @with_agentmail
@@ -112,6 +122,8 @@ def register(mcp: FastMCP) -> None:
                 "Got all of (to, subject, text, html, send_at, "
                 "add_labels, remove_labels) as None/empty."
             )
+        assert_no_system_labels(norm_add, field="add_labels", tool="mail_update_draft")
+        assert_no_system_labels(norm_rem, field="remove_labels", tool="mail_update_draft")
         kwargs = build_kwargs(
             {"inbox_id": config.inbox_id, "draft_id": draft_id},
             {
@@ -124,7 +136,7 @@ def register(mcp: FastMCP) -> None:
                 "remove_labels": norm_rem,
             },
         )
-        return client.format_response(await client.client.inboxes.drafts.update(**kwargs))
+        return await client.format_response(await client.client.inboxes.drafts.update(**kwargs))
 
     @mcp.tool("mail_send_draft")
     @with_agentmail
@@ -153,8 +165,10 @@ def register(mcp: FastMCP) -> None:
         # so the call always sends a non-empty labels payload.
         if not norm_add and not norm_rem:
             norm_add = [_SENT_VIA_MCP_LABEL]
+        assert_no_system_labels(norm_add, field="add_labels", tool="mail_send_draft")
+        assert_no_system_labels(norm_rem, field="remove_labels", tool="mail_send_draft")
         kwargs = build_kwargs(
             {"inbox_id": config.inbox_id, "draft_id": draft_id},
             {"add_labels": norm_add, "remove_labels": norm_rem},
         )
-        return client.format_response(await client.client.inboxes.drafts.send(**kwargs))
+        return await client.format_response(await client.client.inboxes.drafts.send(**kwargs))

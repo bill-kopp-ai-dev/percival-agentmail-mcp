@@ -1,5 +1,6 @@
 """Tests for error sanitization and resilience (Fase 3)."""
 
+import asyncio
 import json
 
 import httpx
@@ -64,7 +65,7 @@ def test_format_error_api_with_none_status_code(wrapper: AgentMailClientWrapper)
 
 def test_serialize_handles_bytes(wrapper: AgentMailClientWrapper) -> None:
     """Regression: bytes in the response would crash json.dumps."""
-    out = wrapper.format_response({"data": b"binary", "text": "ok"})
+    out = asyncio.run(wrapper.format_response({"data": b"binary", "text": "ok"}))
     parsed = json.loads(out)
     assert parsed["text"] == "ok"
     assert "base64" in parsed["data"]
@@ -72,7 +73,7 @@ def test_serialize_handles_bytes(wrapper: AgentMailClientWrapper) -> None:
 
 def test_serialize_handles_set(wrapper: AgentMailClientWrapper) -> None:
     """Regression: sets in the response would crash json.dumps."""
-    out = wrapper.format_response({"tags": {"urgent", "work"}})
+    out = asyncio.run(wrapper.format_response({"tags": {"urgent", "work"}}))
     parsed = json.loads(out)
     assert isinstance(parsed["tags"], list)
     assert set(parsed["tags"]) == {"urgent", "work"}
@@ -80,7 +81,7 @@ def test_serialize_handles_set(wrapper: AgentMailClientWrapper) -> None:
 
 def test_serialize_handles_tuple(wrapper: AgentMailClientWrapper) -> None:
     """Tuples should become lists."""
-    out = wrapper.format_response({"items": ("a", "b", "c")})
+    out = asyncio.run(wrapper.format_response({"items": ("a", "b", "c")}))
     parsed = json.loads(out)
     assert parsed["items"] == ["a", "b", "c"]
 
@@ -207,14 +208,54 @@ async def test_with_retry_retries_timeout_then_gives_up() -> None:
 def test_rate_limiter_allows_within_window() -> None:
     rl = RateLimiter(max_calls=3, window_seconds=10.0)
     for _ in range(3):
-        rl.acquire()
+        asyncio.run(rl.acquire())
 
 
 def test_rate_limiter_blocks_after_max_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: RateLimiter must use asyncio.sleep (not time.sleep) so
+    the event loop is not blocked while waiting for the window to open up.
+    """
     rl = RateLimiter(max_calls=2, window_seconds=0.5)
-    rl.acquire()
-    rl.acquire()
+    asyncio.run(rl.acquire())
+    asyncio.run(rl.acquire())
+
     sleeps: list[float] = []
-    monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
-    rl.acquire()
-    assert sleeps and sleeps[0] > 0
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        return None
+
+    monkeypatch.setattr("asyncio.sleep", fake_sleep)
+
+    asyncio.run(rl.acquire())
+    assert sleeps, "RateLimiter should have invoked asyncio.sleep when window is full"
+    assert sleeps[0] > 0
+
+
+def test_rate_limiter_does_not_block_event_loop() -> None:
+    """Regression: when the window is full, RateLimiter must suspend the
+    current coroutine (yielding to the event loop) instead of blocking
+    the thread. A blocking ``time.sleep`` here would prevent any other
+    coroutine from making progress — including cancellation handlers.
+
+    We use a 10 ms window so the test finishes quickly while still
+    exercising the suspend-and-yield path. With a blocking ``time.sleep``
+    the second ``acquire`` would freeze the loop for the full window
+    and ``other_task`` would only run after the sleep completes.
+    """
+    rl = RateLimiter(max_calls=1, window_seconds=0.01)
+    asyncio.run(rl.acquire())
+
+    other_ran = False
+
+    async def other_task() -> None:
+        nonlocal other_ran
+        other_ran = True
+
+    async def driver() -> None:
+        # Schedule both on the loop. ``other_task`` runs immediately,
+        # ``rl.acquire`` suspends for 10 ms — neither blocks the thread.
+        await asyncio.gather(rl.acquire(), other_task())
+
+    asyncio.run(driver())
+    assert other_ran, "Other task must have run while RateLimiter was waiting"

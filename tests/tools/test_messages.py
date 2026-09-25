@@ -209,12 +209,12 @@ async def test_update_message_adds_and_removes_labels(get_tool, fake_ctx, mock_w
     await get_tool("mail_update_message")(
         fake_ctx,
         message_id="msg_1",
-        add_labels=["read"],
-        remove_labels=["unread"],
+        add_labels=["important"],
+        remove_labels=["archived"],
     )
     _, kwargs = mock_wrapper.client.inboxes.messages.update.call_args
-    assert kwargs["add_labels"] == ["read"]
-    assert kwargs["remove_labels"] == ["unread"]
+    assert kwargs["add_labels"] == ["important"]
+    assert kwargs["remove_labels"] == ["archived"]
 
 
 @pytest.mark.asyncio
@@ -223,10 +223,10 @@ async def test_update_message_normalizes_labels(get_tool, fake_ctx, mock_wrapper
     await get_tool("mail_update_message")(
         fake_ctx,
         message_id="msg_1",
-        add_labels="read, important",
+        add_labels="urgent, important",
     )
     _, kwargs = mock_wrapper.client.inboxes.messages.update.call_args
-    assert kwargs["add_labels"] == ["read", "important"]
+    assert kwargs["add_labels"] == ["urgent", "important"]
 
 
 # --- mail_delete_message ---
@@ -347,3 +347,56 @@ async def test_get_attachment_returns_error(get_tool, fake_ctx, mock_wrapper) ->
     )
     parsed = json.loads(result)
     assert parsed["code"] == 404
+
+
+# --- Hardening: system-label blocklist & recipient non-empty ---------------
+
+
+@pytest.mark.asyncio
+async def test_update_message_rejects_system_labels(get_tool, fake_ctx, mock_wrapper) -> None:
+    """The system labels blocklist applies to ``mail_update_message`` too."""
+    mock_wrapper.client.inboxes.messages.update = AsyncMock()
+    result = await get_tool("mail_update_message")(
+        fake_ctx,
+        message_id="msg_1",
+        add_labels=["read", "urgent"],
+    )
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "'read'" in parsed["message"]
+    mock_wrapper.client.inboxes.messages.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_email_rejects_empty_to(get_tool, fake_ctx, mock_wrapper) -> None:
+    mock_wrapper.client.inboxes.messages.send = AsyncMock()
+    result = await get_tool("mail_send_email")(fake_ctx, to=[], subject="Hi", text="Hello")
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "to" in parsed["message"].lower()
+    mock_wrapper.client.inboxes.messages.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_email_rejects_empty_subject_or_text(get_tool, fake_ctx, mock_wrapper) -> None:
+    """A missing ``subject`` or empty ``text`` would otherwise be silently
+    accepted by the SDK and surfaced as a generic 400 echo.
+    """
+    mock_wrapper.client.inboxes.messages.send = AsyncMock()
+    result_subject = await get_tool("mail_send_email")(fake_ctx, to=["a@example.com"], subject="", text="Hello")
+    assert json.loads(result_subject)["status"] == "error"
+
+    result_text = await get_tool("mail_send_email")(fake_ctx, to=["a@example.com"], subject="Hi", text="")
+    assert json.loads(result_text)["status"] == "error"
+
+    mock_wrapper.client.inboxes.messages.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_forward_message_rejects_empty_to(get_tool, fake_ctx, mock_wrapper) -> None:
+    mock_wrapper.client.inboxes.messages.forward = AsyncMock()
+    result = await get_tool("mail_forward_message")(fake_ctx, message_id="msg_1", to=[])
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "to" in parsed["message"].lower()
+    mock_wrapper.client.inboxes.messages.forward.assert_not_called()

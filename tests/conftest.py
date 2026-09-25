@@ -24,6 +24,9 @@ def mock_wrapper() -> AgentMailClientWrapper:
     wrapper = AgentMailClientWrapper(api_key="am_test_12345678")
     wrapper.client = MagicMock()
     wrapper.client.aclose = AsyncMock()
+    # Reset the rate limiter so token accumulation across tests does not
+    # trigger a real window-bound suspend during the test run.
+    wrapper._limiter._timestamps = []
     return wrapper
 
 

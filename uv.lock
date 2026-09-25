@@ -10,7 +10,7 @@ resolution-markers = [
 
 [[package]]
 name = "agentmail"
-version = "0.5.8"
+version = "2.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -19,9 +19,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/09/5c/85ca86daa8cbac5f02fd623e2413d27e2b2a08fa4de5aef776a4dc1f6ee9/agentmail-0.5.8.tar.gz", hash = "sha256:085eb0e847593f87315712102f86a249b52bea93359c477c48d6d646883dde5f", size = 142977, upload-time = "2026-07-15T07:57:06.301Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/27/f6eff4ae670e683c9a58084279d5426db0d3d464d7e20b55a725120a78d6/agentmail-2.0.4.tar.gz", hash = "sha256:b73fd368941b59fd97e83831bc57bc7770e48fb5767d52b5326fe1aa190d6ccd", size = 174129, upload-time = "2026-09-25T20:26:59.747Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dc/6f/1ee48bdf4a3dd64bde84f79109417e890a60edb119cd9d8024e46442b319/agentmail-0.5.8-py3-none-any.whl", hash = "sha256:e9479bf2d5c473ffbe6874d67a1a3679071e4eb99a4bc9f192473082ec4befd3", size = 307190, upload-time = "2026-07-15T07:57:04.948Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/9f/b40f3c3aacc5f49f9abcf0997ca15d631dd95f09204a074c49e6e9368129/agentmail-2.0.4-py3-none-any.whl", hash = "sha256:3269905651409686a8e123df21d40983b238d1006f68f97192c656a114c12a52", size = 369863, upload-time = "2026-09-25T20:26:58.415Z" },
 ]
 
 [[package]]
@@ -513,7 +513,7 @@ wheels = [
 
 [[package]]
 name = "percival-agentmail-mcp"
-version = "0.3.2"
+version = "0.3.5"
 source = { editable = "." }
 dependencies = [
     { name = "agentmail" },
@@ -534,7 +534,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agentmail", specifier = ">=0.5.8" },
+    { name = "agentmail", specifier = ">=2.0.4" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.12.0" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.3.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },

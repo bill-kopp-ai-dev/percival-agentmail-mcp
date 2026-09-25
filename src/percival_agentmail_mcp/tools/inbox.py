@@ -48,7 +48,7 @@ def register(mcp: FastMCP) -> None:
     ) -> str:
         """Retrieves the current configuration and statistical details of the agent's primary email inbox."""
         inbox = await client.client.inboxes.get(inbox_id=config.inbox_id)
-        return client.format_response(inbox)
+        return await client.format_response(inbox)
 
     @mcp.tool("mail_update_inbox")
     @with_agentmail
@@ -67,13 +67,25 @@ def register(mcp: FastMCP) -> None:
         ``display_name`` is trimmed and internal whitespace is compressed
         before being sent.
 
-        The ``metadata`` parameter requires a 0.5.x SDK wheel that
-        actually exposes the kwarg. Older 0.5.x wheels (such as the
-        0.5.0 pinned in CI on 2026-07-22) reject it with ``TypeError``;
-        when that's the case the handler surfaces a clear error and
-        instructs the caller to upgrade ``agentmail``.
+        ``metadata`` must be a JSON object (``dict``); anything else
+        produces a clear ``ValueError`` before reaching the SDK. The
+        ``metadata`` kwarg also requires a 0.5.x SDK wheel that
+        actually exposes it. Older wheels (such as the 0.5.0 pinned in
+        CI on 2026-07-22) reject the call with ``TypeError``; when that
+        happens we translate the SDK error into an actionable
+        ``ValueError`` the LLM can react to (upgrade agentmail or call
+        ``update_inbox`` with ``display_name=...`` instead).
         """
         norm_name = _normalize_display_name(display_name) if display_name else None
+        # metadata must be a dict (JSON object); reject anything else
+        # client-side so the LLM gets a clear hint instead of an opaque
+        # Pydantic ValidationError from the SDK.
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ValueError(
+                "update_inbox expects `metadata` to be a JSON object "
+                f"(dict of string→string), got {type(metadata).__name__}: "
+                f"{metadata!r}. Use display_name= for human-readable labels."
+            )
         norm_meta = metadata if metadata else None
 
         if not norm_name and not norm_meta:
@@ -114,7 +126,7 @@ def register(mcp: FastMCP) -> None:
                     "or call update_inbox with display_name=... instead."
                 ) from None
             raise
-        return client.format_response(inbox)
+        return await client.format_response(inbox)
 
     @mcp.tool("mail_list_inbox_events")
     @with_agentmail
@@ -130,4 +142,4 @@ def register(mcp: FastMCP) -> None:
             inbox_id=config.inbox_id,
             limit=cap_limit(limit, config.max_results, MAX_RESULTS_CAP),
         )
-        return client.format_response(events)
+        return await client.format_response(events)

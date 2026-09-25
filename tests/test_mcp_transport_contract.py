@@ -168,21 +168,26 @@ async def test_mail_update_message_rejects_empty_labels(contract_context) -> Non
 
 @pytest.mark.asyncio
 async def test_mail_update_message_succeeds_with_labels(contract_context) -> None:
-    """Bug C (positive case): providing labels calls PATCH successfully."""
+    """Bug C (positive case): providing labels calls PATCH successfully.
+
+    Uses a *custom* label (not a reserved system one like ``"read"``) —
+    the AgentMail upstream rejects system labels with HTTP 400 and the
+    handler now shields the LLM from that round-trip.
+    """
     server = _build_server(contract_context)
 
     with respx.mock(base_url="https://api.agentmail.to") as rmock:
         route = rmock.patch("/v0/inboxes/agent@agentmail.to/messages/msg_1").respond(
-            200, json={"id": "msg_1", "labels": ["read"]}
+            200, json={"id": "msg_1", "labels": ["important"]}
         )
         await _invoke(
             server,
             contract_context,
             "mail_update_message",
-            {"message_id": "msg_1", "add_labels": ["read"]},
+            {"message_id": "msg_1", "add_labels": ["important"]},
         )
         body = json.loads(route.calls[0].request.content.decode())
-        assert body == {"add_labels": ["read"]}
+        assert body == {"add_labels": ["important"]}
 
 
 # ---------------------------------------------------------------------------

@@ -20,3 +20,14 @@ MAX_ATTACHMENT_BINARY_BYTES = 20 * 1024 * 1024  # 20 MiB binary
 
 # Server identifier.
 SERVER_NAME = "percival-agentmail"
+
+# System labels reserved by the AgentMail upstream. Adding/removing any
+# of these via the SDK is rejected with HTTP 400 "Cannot use system
+# label". ``mail_mark_thread_read`` and ``mail_send_draft`` therefore
+# substitute a custom "mcp-*" sentinel label, and every other tool that
+# mutates labels calls ``helpers.assert_no_system_labels`` to translate
+# the inevitable 400 into a clear client-side error before paying a
+# round-trip to the API.
+#
+# References: https://docs.agentmail.to/api-reference (labels endpoints).
+SYSTEM_LABELS: frozenset[str] = frozenset({"sent", "received", "unread", "draft", "read"})

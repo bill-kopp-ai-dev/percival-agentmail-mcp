@@ -8,7 +8,12 @@ from percival_agentmail_mcp.client import AgentMailClientWrapper
 from percival_agentmail_mcp.config import ServerConfig
 from percival_agentmail_mcp.constants import MAX_RESULTS_CAP
 from percival_agentmail_mcp.decorators import retryable, with_agentmail
-from percival_agentmail_mcp.helpers import build_kwargs, cap_limit, normalize_list
+from percival_agentmail_mcp.helpers import (
+    assert_no_system_labels,
+    build_kwargs,
+    cap_limit,
+    normalize_list,
+)
 
 
 def register(mcp: FastMCP) -> None:
@@ -34,7 +39,7 @@ def register(mcp: FastMCP) -> None:
             {"labels": normalize_list(labels), "page_token": page_token},
         )
         result = await client.client.inboxes.threads.list(**kwargs)
-        return client.format_response(result)
+        return await client.format_response(result)
 
     @mcp.tool("mail_get_thread")
     @with_agentmail
@@ -53,7 +58,7 @@ def register(mcp: FastMCP) -> None:
             inbox_id=config.inbox_id,
             thread_id=thread_id,
         )
-        return client.format_fenced(result)
+        return await client.format_fenced(result)
 
     @mcp.tool("mail_update_thread")
     @with_agentmail
@@ -80,11 +85,13 @@ def register(mcp: FastMCP) -> None:
                 "`remove_labels` to be a non-empty list. "
                 f"Got add_labels={add_labels!r}, remove_labels={remove_labels!r}."
             )
+        assert_no_system_labels(norm_add, field="add_labels", tool="mail_update_thread")
+        assert_no_system_labels(norm_rem, field="remove_labels", tool="mail_update_thread")
         kwargs = build_kwargs(
             {"inbox_id": config.inbox_id, "thread_id": thread_id},
             {"add_labels": norm_add, "remove_labels": norm_rem},
         )
-        return client.format_response(await client.client.inboxes.threads.update(**kwargs))
+        return await client.format_response(await client.client.inboxes.threads.update(**kwargs))
 
     @mcp.tool("mail_delete_thread")
     @with_agentmail
@@ -131,4 +138,4 @@ def register(mcp: FastMCP) -> None:
             {"inbox_id": config.inbox_id, "thread_id": thread_id},
             {"add_labels": norm_add, "remove_labels": norm_rem},
         )
-        return client.format_response(await client.client.inboxes.threads.update(**kwargs))
+        return await client.format_response(await client.client.inboxes.threads.update(**kwargs))

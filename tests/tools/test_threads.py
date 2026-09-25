@@ -136,3 +136,28 @@ async def test_mark_thread_read_false_removes_label(get_tool, fake_ctx, mock_wra
     _, kwargs = mock_wrapper.client.inboxes.threads.update.call_args
     assert kwargs["remove_labels"] == ["mcp-read"]
     assert "add_labels" not in kwargs
+
+
+# --- Hardening: system-label blocklist -------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_thread_rejects_system_labels(get_tool, fake_ctx, mock_wrapper) -> None:
+    """``mail_update_thread`` also enforces the system-label blocklist."""
+    mock_wrapper.client.inboxes.threads.update = AsyncMock()
+    result = await get_tool("mail_update_thread")(fake_ctx, thread_id="t_1", add_labels=["sent", "archived"])
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "'sent'" in parsed["message"]
+    assert "Cannot use system label" in parsed["message"]
+    mock_wrapper.client.inboxes.threads.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_thread_rejects_system_remove_labels(get_tool, fake_ctx, mock_wrapper) -> None:
+    mock_wrapper.client.inboxes.threads.update = AsyncMock()
+    result = await get_tool("mail_update_thread")(fake_ctx, thread_id="t_1", remove_labels=["unread"])
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "'unread'" in parsed["message"]
+    mock_wrapper.client.inboxes.threads.update.assert_not_called()

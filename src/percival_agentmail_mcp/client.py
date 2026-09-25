@@ -20,7 +20,6 @@ import time
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from enum import Enum
-from threading import Lock
 from typing import Any, TypeVar
 from uuid import UUID
 
@@ -65,16 +64,23 @@ class RateLimiter:
 
     Default: 30 calls / 60 seconds. Prevents runaway LLM loops from
     hammering the AgentMail API.
+
+    The ``acquire`` method is async because it must suspend the calling
+    coroutine (not block the event loop) when the limit is reached.
+    A previous implementation used ``time.sleep`` under a
+    ``threading.Lock``; that froze every concurrent request in the
+    FastMCP server for up to a full window, turning a defensive
+    throttle into a denial-of-service on the server itself.
     """
 
     def __init__(self, max_calls: int = 30, window_seconds: float = 60.0):
         self.max_calls = max_calls
         self.window = window_seconds
         self._timestamps: list[float] = []
-        self._lock = Lock()
+        self._lock = asyncio.Lock()
 
-    def acquire(self) -> None:
-        with self._lock:
+    async def acquire(self) -> None:
+        async with self._lock:
             now = time.monotonic()
             cutoff = now - self.window
             self._timestamps = [t for t in self._timestamps if t > cutoff]
@@ -89,10 +95,10 @@ class RateLimiter:
                         self.window,
                         sleep_for,
                     )
-                    # Hold the lock while sleeping so we cannot be raced
-                    # by another thread checking the same window. Lock
-                    # is released when we exit the `with` block.
-                    time.sleep(sleep_for)
+                    # Suspend the coroutine (NOT the event-loop thread)
+                    # so other concurrent MCP requests can keep making
+                    # progress while we wait for the window to open up.
+                    await asyncio.sleep(sleep_for)
                     # Recompute now after the sleep so the appended
                     # timestamp reflects the post-sleep instant and
                     # does not jump arbitrarily into the future.
@@ -272,15 +278,15 @@ class AgentMailClientWrapper:
 
         return serialized
 
-    def format_response(self, obj: Any) -> str:
+    async def format_response(self, obj: Any) -> str:
         """Format a successful response to a JSON string."""
-        self._limiter.acquire()
+        await self._limiter.acquire()
         serialized = self._serialize(obj)
         return json.dumps(serialized, indent=2, default=_json_default)
 
-    def format_fenced(self, obj: Any) -> str:
+    async def format_fenced(self, obj: Any) -> str:
         """Format a response with prompt-injection fences applied."""
-        self._limiter.acquire()
+        await self._limiter.acquire()
         serialized = self.fence_message_payload(obj)
         return json.dumps(serialized, indent=2, default=_json_default)
 
@@ -381,7 +387,12 @@ class AgentMailClientWrapper:
                 cap = upstream_messages[:3]
                 joined = " | ".join(cap)
                 if joined and joined not in message:
-                    message = f"{message} Upstream: {joined[:600]}"
+                    truncated = joined
+                    suffix = ""
+                    if len(joined) > 600:
+                        truncated = joined[:600].rstrip()
+                        suffix = "…"
+                    message = f"{message} Upstream: {truncated}{suffix}"
 
             payload: dict[str, Any] = {
                 "status": "error",
