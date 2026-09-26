@@ -5,6 +5,9 @@ on:
     branches: [main, refactor/**]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test on Python ${{ matrix.python }}
@@ -26,3 +29,65 @@ jobs:
           uv run ruff format --check .
       - name: Test with coverage
         run: uv run pytest --cov
+
+  docker:
+    name: Docker build + smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up BuildKit
+        uses: docker/setup-buildx-action@v3
+      - name: Resolve build metadata
+        id: meta
+        run: |
+          # SemVer from pyproject.toml — single source of truth.
+          VERSION=$(grep -E '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
+          SHORT_SHA="${GITHUB_SHA::7}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            GIT_SHA=${{ steps.meta.outputs.short_sha }}
+          tags: percival-agentmail-mcp:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke (--version exits 0)
+        run: |
+          set -euo pipefail
+          output=$(docker run --rm percival-agentmail-mcp:ci --version)
+          echo "$output"
+          # `-F` (fixed string) is intentional: the SemVer is literal,
+          # not a regex, and a future non-numeric build suffix would
+          # otherwise need escaping.
+          echo "$output" | grep -Fq "Percival AgentMail MCP Server version ${{ steps.meta.outputs.version }}"
+      - name: Smoke (no env → sanitized failure)
+        run: |
+          # When no AGENTMAIL_* env is set, the server lifespan must
+          # raise the sanitized ValueError, not dump a raw traceback.
+          set +e
+          output=$(docker run --rm percival-agentmail-mcp:ci 2>&1)
+          status=$?
+          set -e
+          echo "exit=${status}"
+          echo "$output" | tail -20
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Expected non-zero exit when env is missing."
+            exit 1
+          fi
+          echo "$output" | grep -q "Missing or invalid AgentMail configuration"
+      - name: Inspect image (sanity)
+        run: |
+          echo "=== Size ==="
+          docker images percival-agentmail-mcp:ci --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}"
+          echo "=== User ==="
+          docker inspect percival-agentmail-mcp:ci --format '{{.Config.User}}'
+          echo "=== Entrypoint ==="
+          docker inspect percival-agentmail-mcp:ci --format '{{json .Config.Entrypoint}} {{json .Config.Cmd}}'
+          echo "=== OCI labels ==="
+          docker inspect percival-agentmail-mcp:ci --format '{{json .Config.Labels}}' | python3 -m json.tool
