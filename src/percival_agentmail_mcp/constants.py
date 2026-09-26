@@ -16,7 +16,21 @@ MAX_RESULTS_CAP = 50
 # We accept the limit as binary bytes (what the user wants to send),
 # but the validator must convert from base64 characters (1.33x inflation)
 # to binary bytes for the comparison to be meaningful.
-MAX_ATTACHMENT_BINARY_BYTES = 20 * 1024 * 1024  # 20 MiB binary
+#
+# Aligned to the AgentMail upstream total-request limit of 6 MB
+# (``SendAttachment.content`` docstring: "The entire request, including
+# the message body and all attachments, is limited to 6 MB"). v0.3.6
+# closes the drift between this client-side cap and the upstream
+# constraint. URL-backed attachments (added in v0.4.0) are exempt:
+# they bypass the 6 MB request-body limit on the upstream side.
+MAX_ATTACHMENT_BINARY_BYTES = 6 * 1024 * 1024  # 6 MiB binary
+
+# Allowed values for the optional ``content_disposition`` field on each
+# attachment, matching the ``SendAttachment.content_disposition`` enum
+# in the AgentMail Python SDK (``AttachmentContentDisposition``). Validated
+# client-side in v0.4.0 so typos like ``"inline_"`` are caught before the
+# round-trip instead of returning an opaque upstream 4xx.
+ALLOWED_CONTENT_DISPOSITIONS: frozenset[str] = frozenset({"inline", "attachment"})
 
 # Server identifier.
 SERVER_NAME = "percival-agentmail"

@@ -280,11 +280,237 @@ async def test_400_error_carries_tool_name_and_hint(contract_context) -> None:
             "mail_update_message",
             {"message_id": "msg_1", "add_labels": ["foo"]},
         )
+    out = json.loads(result)
+    assert out["status"] == "error"
+    assert out["code"] == 400
+    # Upstream message must be in the message (for LLM context)
+    assert "Label" in out["message"]
+    # S5: tool name and affected ID are surfaced as top-level keys
+    assert out.get("tool") == "update_message"
+    assert out.get("affected") == {"message_id": "msg_1"}
+
+
+# ---------------------------------------------------------------------------
+# Wire-level regression — mail_send_email attachments
+# ---------------------------------------------------------------------------
+#
+# Bug history (2026-08-21, v0.3.4):
+#   The MCP accepted `attachments=[{"filename": ..., "content_base64": ...}]`
+#   but passed the dict straight to the SDK. The AgentMail SDK's
+#   ``SendAttachment`` model has ``extra="allow"`` and only recognizes
+#   the field ``content`` (not ``content_base64``); Pydantic silently
+#   drops the unknown key, so the upstream request reached Amazon SES
+#   with an empty attachment and ``message_id`` was returned without an
+#   actual attachment in the email.
+#
+# The handler now translates ``content_base64`` -> ``content`` via
+# ``_to_sdk_attachments`` (see ``tools/messages.py``). These tests pin
+# the **wire-level JSON body** so a future SDK release that renames
+# ``content`` (or otherwise mangles the payload) cannot silently
+# regress this fix.
+
+
+@pytest.mark.asyncio
+async def test_mail_send_email_attachment_uses_content_field_on_wire(contract_context) -> None:
+    """``content_base64`` must be renamed to ``content`` before hitting the upstream."""
+    server = _build_server(contract_context)
+
+    with respx.mock(base_url="https://api.agentmail.to") as rmock:
+        route = rmock.post("/v0/inboxes/agent@agentmail.to/messages/send").respond(
+            200, json={"message_id": "msg_x", "thread_id": "t_1"}
+        )
+        await _invoke(
+            server,
+            contract_context,
+            "mail_send_email",
+            {
+                "to": ["recipient@example.com"],
+                "subject": "Wire test",
+                "text": "Body",
+                "attachments": [
+                    {
+                        "filename": "note.md",
+                        "content_base64": "aGVsbG8=",
+                        "content_type": "text/markdown",
+                    },
+                ],
+            },
+        )
+
+        body = json.loads(route.calls[0].request.content.decode())
+        assert "attachments" in body, f"attachments missing from wire body: {body}"
+        att_list = body["attachments"]
+        assert len(att_list) == 1
+        att = att_list[0]
+        # The critical assertion: payload travels under the SDK's field name.
+        assert att.get("content") == "aGVsbG8=", (
+            f"Expected payload under `content` (SDK-recognized name); got {att!r}. "
+            "If this fails the SDK may have renamed or nested the field — "
+            "investigate before relaxing the assertion."
+        )
+        # ``content_base64`` must NOT appear on the wire — it's an MCP-facing
+        # alias, not an AgentMail API field. The SDK would silently drop it
+        # via ``extra="allow"`` and the recipient would receive no attachment.
+        assert "content_base64" not in att, (
+            f"content_base64 leaked to upstream SendAttachment — would be silently "
+            f"dropped by extra='allow'. body={att!r}"
+        )
+        # Sanity: other LLM-facing fields are preserved verbatim.
+        assert att.get("filename") == "note.md"
+        assert att.get("content_type") == "text/markdown"
+
+
+@pytest.mark.asyncio
+async def test_mail_send_email_attachment_rejected_locally_before_wire_call(contract_context, monkeypatch) -> None:
+    """An oversized attachment must be rejected client-side; no HTTP request.
+
+    With ``MAX_ATTACHMENT_BINARY_BYTES`` aligned to the upstream 6 MB
+    total request limit (v0.3.6), this guard saves the operator from a
+    round-trip 4xx.
+    """
+    server = _build_server(contract_context)
+    respx_mock = respx.mock(base_url="https://api.agentmail.to", assert_all_called=False)
+    respx_mock.start()
+    try:
+        # 7 MB of binary — must be rejected by the handler's validator.
+        import base64 as _b64
+
+        payload = _b64.b64encode(b"x" * (7 * 1024 * 1024)).decode("ascii")
+        result = await _invoke(
+            server,
+            contract_context,
+            "mail_send_email",
+            {
+                "to": ["recipient@example.com"],
+                "subject": "Oversize test",
+                "text": "Body",
+                "attachments": [{"filename": "huge.bin", "content_base64": payload}],
+            },
+        )
         out = json.loads(result)
         assert out["status"] == "error"
-        assert out["code"] == 400
-        # Upstream message must be in the message (for LLM context)
-        assert "Label" in out["message"]
-        # S5: tool name and affected ID are surfaced as top-level keys
-        assert out.get("tool") == "update_message"
-        assert out.get("affected") == {"message_id": "msg_1"}
+        assert "limit" in out["message"].lower() or "mb" in out["message"].lower(), (
+            f"Error message should mention the size cap; got: {out['message']!r}"
+        )
+        # No route was registered, so any call would have raised
+        # ConnectionError — reaching this line means the API was NOT called.
+    finally:
+        respx_mock.stop()
+
+
+@pytest.mark.asyncio
+async def test_mail_send_email_attachment_just_under_cap_reaches_wire(contract_context, monkeypatch) -> None:
+    """A 5 MB attachment (under the 6 MB cap) must reach the upstream."""
+    server = _build_server(contract_context)
+
+    with respx.mock(base_url="https://api.agentmail.to") as rmock:
+        route = rmock.post("/v0/inboxes/agent@agentmail.to/messages/send").respond(
+            200, json={"message_id": "msg_big", "thread_id": "t_big"}
+        )
+        import base64 as _b64
+
+        payload = _b64.b64encode(b"x" * (5 * 1024 * 1024)).decode("ascii")
+        await _invoke(
+            server,
+            contract_context,
+            "mail_send_email",
+            {
+                "to": ["recipient@example.com"],
+                "subject": "Under-cap test",
+                "text": "Body",
+                "attachments": [{"filename": "big.bin", "content_base64": payload}],
+            },
+        )
+        body = json.loads(route.calls[0].request.content.decode())
+        assert len(body["attachments"]) == 1
+        assert body["attachments"][0]["filename"] == "big.bin"
+        # Payload length matches 5 MiB binary (base64 inflates ~33%).
+        assert len(body["attachments"][0]["content"]) > 5 * 1024 * 1024
+
+
+# ---------------------------------------------------------------------------
+# Wire-level coverage — v0.4.0 attachment fields
+# ---------------------------------------------------------------------------
+#
+# These tests pin the JSON shape for the optional ``content_disposition``,
+# ``content_id``, and ``url`` fields added in v0.4.0. They follow the same
+# pattern as the content/content_base64 tests above: mock the upstream HTTP
+# endpoint, inspect the actual request body, assert the field names the
+# AgentMail API expects.
+
+
+@pytest.mark.asyncio
+async def test_mail_send_email_attachment_content_disposition_on_wire(
+    contract_context,
+) -> None:
+    """``content_disposition`` propagates to the upstream JSON (v0.4.0)."""
+    server = _build_server(contract_context)
+
+    with respx.mock(base_url="https://api.agentmail.to") as rmock:
+        route = rmock.post("/v0/inboxes/agent@agentmail.to/messages/send").respond(
+            200, json={"message_id": "msg_inline", "thread_id": "t_inline"}
+        )
+        await _invoke(
+            server,
+            contract_context,
+            "mail_send_email",
+            {
+                "to": ["recipient@example.com"],
+                "subject": "Inline test",
+                "text": "<img src='cid:logo' alt='logo'>",
+                "html": "<html><body><img src='cid:logo' alt='logo'></body></html>",
+                "attachments": [
+                    {
+                        "filename": "logo.png",
+                        "content_base64": "aGVsbG8=",
+                        "content_type": "image/png",
+                        "content_disposition": "inline",
+                        "content_id": "logo",
+                    },
+                ],
+            },
+        )
+        body = json.loads(route.calls[0].request.content.decode())
+        att = body["attachments"][0]
+        assert att.get("content_disposition") == "inline"
+        assert att.get("content_id") == "logo"
+        assert att.get("content") == "aGVsbG8="
+
+
+@pytest.mark.asyncio
+async def test_mail_send_email_attachment_url_on_wire(contract_context) -> None:
+    """URL-backed attachment: ``url`` propagates, ``content`` is omitted (v0.4.0).
+
+    Without the conditional ``content`` assignment in
+    ``_to_sdk_attachments``, the wire body would carry ``content: null``
+    alongside ``url``, which is allowed by the SDK but is unnecessary
+    noise on the wire.
+    """
+    server = _build_server(contract_context)
+
+    with respx.mock(base_url="https://api.agentmail.to") as rmock:
+        route = rmock.post("/v0/inboxes/agent@agentmail.to/messages/send").respond(
+            200, json={"message_id": "msg_url", "thread_id": "t_url"}
+        )
+        await _invoke(
+            server,
+            contract_context,
+            "mail_send_email",
+            {
+                "to": ["recipient@example.com"],
+                "subject": "URL-backed test",
+                "text": "See attached large PDF.",
+                "attachments": [
+                    {
+                        "filename": "big.pdf",
+                        "url": "https://example.com/big.pdf",
+                        "content_type": "application/pdf",
+                    },
+                ],
+            },
+        )
+        body = json.loads(route.calls[0].request.content.decode())
+        att = body["attachments"][0]
+        assert att.get("url") == "https://example.com/big.pdf"
+        assert "content" not in att, f"content field must be omitted for URL-backed attachments: {att!r}"
+        assert "content_base64" not in att

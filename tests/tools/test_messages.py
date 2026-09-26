@@ -277,11 +277,16 @@ async def test_send_email_with_attachments(get_tool, fake_ctx, mock_wrapper) -> 
 
 @pytest.mark.asyncio
 async def test_send_email_rejects_oversized_attachments(get_tool, fake_ctx, mock_wrapper) -> None:
-    """Attachments exceeding 20 MB (decoded) must NOT reach the API."""
+    """Attachments exceeding 6 MB (decoded, total) must NOT reach the API.
+
+    As of v0.3.6 the local cap is aligned with the AgentMail upstream
+    total-request limit of 6 MB (was 20 MB). URL-backed attachments
+    bypass this cap and are covered separately.
+    """
     import base64 as _b64
 
-    # 21 MB of binary, base64-encoded (4 chars per 3 bytes)
-    payload = _b64.b64encode(b"x" * (21 * 1024 * 1024)).decode("ascii")
+    # 7 MB of binary, base64-encoded (4 chars per 3 bytes) — must exceed the 6 MB cap.
+    payload = _b64.b64encode(b"x" * (7 * 1024 * 1024)).decode("ascii")
     mock_wrapper.client.inboxes.messages.send = AsyncMock()
     result = await get_tool("mail_send_email")(
         fake_ctx,
@@ -292,6 +297,8 @@ async def test_send_email_rejects_oversized_attachments(get_tool, fake_ctx, mock
     )
     parsed = json.loads(result)
     assert parsed["status"] == "error"
+    # The error message should mention the size cap so the LLM can react.
+    assert "6 mb" in parsed["message"].lower() or "limit" in parsed["message"].lower()
     # The API must never be called for oversized attachments
     mock_wrapper.client.inboxes.messages.send.assert_not_called()
 
@@ -311,6 +318,140 @@ async def test_send_email_rejects_invalid_base64(get_tool, fake_ctx, mock_wrappe
     parsed = json.loads(result)
     assert parsed["status"] == "error"
     assert "invalid base64" in parsed["message"].lower()
+    mock_wrapper.client.inboxes.messages.send.assert_not_called()
+
+
+# --- v0.4.0: optional attachment fields (content_disposition, content_id, url) ---
+
+
+@pytest.mark.asyncio
+async def test_send_email_attachment_passes_through_content_disposition(get_tool, fake_ctx, mock_wrapper) -> None:
+    """``content_disposition`` is a passthrough to the SDK (v0.4.0)."""
+    mock_wrapper.client.inboxes.messages.send = AsyncMock(return_value={"id": "msg_1"})
+    await get_tool("mail_send_email")(
+        fake_ctx,
+        to=["a@example.com"],
+        subject="Hi",
+        text="Body",
+        attachments=[
+            {
+                "filename": "logo.png",
+                "content_base64": "aGVsbG8=",
+                "content_type": "image/png",
+                "content_disposition": "inline",
+                "content_id": "logo",
+            },
+        ],
+    )
+    _, kwargs = mock_wrapper.client.inboxes.messages.send.call_args
+    att = kwargs["attachments"][0]
+    assert att["content_disposition"] == "inline"
+    assert att["content_id"] == "logo"
+
+
+@pytest.mark.asyncio
+async def test_send_email_attachment_url_replaces_content_base64(get_tool, fake_ctx, mock_wrapper) -> None:
+    """URL-backed attachment: ``url`` is passed, ``content`` is omitted.
+
+    Upstream ``SendAttachment`` accepts either ``content`` or ``url``;
+    when the LLM sends ``url``, we must NOT also emit ``content=None``
+    (which the SDK would happily forward, but it's noise on the wire).
+    """
+    mock_wrapper.client.inboxes.messages.send = AsyncMock(return_value={"id": "msg_1"})
+    await get_tool("mail_send_email")(
+        fake_ctx,
+        to=["a@example.com"],
+        subject="Hi",
+        text="Body",
+        attachments=[
+            {
+                "filename": "big.pdf",
+                "url": "https://example.com/big.pdf",
+                "content_type": "application/pdf",
+            },
+        ],
+    )
+    _, kwargs = mock_wrapper.client.inboxes.messages.send.call_args
+    att = kwargs["attachments"][0]
+    assert att["url"] == "https://example.com/big.pdf"
+    assert "content" not in att, f"content field must be omitted for URL-backed attachments: {att!r}"
+    assert "content_base64" not in att
+
+
+@pytest.mark.asyncio
+async def test_send_email_rejects_invalid_content_disposition(get_tool, fake_ctx, mock_wrapper) -> None:
+    """Invalid ``content_disposition`` is rejected client-side (v0.4.0).
+
+    Saves the LLM from an opaque upstream 4xx when it typos the enum.
+    """
+    mock_wrapper.client.inboxes.messages.send = AsyncMock()
+    result = await get_tool("mail_send_email")(
+        fake_ctx,
+        to=["a@example.com"],
+        subject="Hi",
+        text="Body",
+        attachments=[
+            {
+                "filename": "x.bin",
+                "content_base64": "aGVsbG8=",
+                "content_disposition": "inlined",  # typo
+            },
+        ],
+    )
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "content_disposition" in parsed["message"]
+    assert "inlined" in parsed["message"]
+    mock_wrapper.client.inboxes.messages.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_email_rejects_attachment_with_both_content_and_url(get_tool, fake_ctx, mock_wrapper) -> None:
+    """``content_base64`` and ``url`` are mutually exclusive (v0.4.0)."""
+    mock_wrapper.client.inboxes.messages.send = AsyncMock()
+    result = await get_tool("mail_send_email")(
+        fake_ctx,
+        to=["a@example.com"],
+        subject="Hi",
+        text="Body",
+        attachments=[
+            {
+                "filename": "x.bin",
+                "content_base64": "aGVsbG8=",
+                "url": "https://example.com/x.bin",
+            },
+        ],
+    )
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "content_base64" in parsed["message"] and "url" in parsed["message"]
+    mock_wrapper.client.inboxes.messages.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_email_rejects_attachment_with_neither_content_nor_url(get_tool, fake_ctx, mock_wrapper) -> None:
+    """An attachment with neither ``content_base64`` nor ``url`` is empty (v0.4.0).
+
+    Without this guard, the upstream would silently send an empty
+    attachment — the same failure mode the original 2026-08-21 issue
+    reported, just via a different code path.
+    """
+    mock_wrapper.client.inboxes.messages.send = AsyncMock()
+    result = await get_tool("mail_send_email")(
+        fake_ctx,
+        to=["a@example.com"],
+        subject="Hi",
+        text="Body",
+        attachments=[
+            {
+                "filename": "ghost.bin",
+                "content_type": "application/octet-stream",
+            },
+        ],
+    )
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert "content_base64" in parsed["message"] and "url" in parsed["message"]
     mock_wrapper.client.inboxes.messages.send.assert_not_called()
 
 

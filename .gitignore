@@ -29,3 +29,6 @@ build/
 .ruff_cache/
 htmlcov/
 .coverage
+
+# Local issue drafts (raw imports from Gmail/PDF, not for version control)
+docs/issues/

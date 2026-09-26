@@ -4,6 +4,88 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
+## [0.4.0] — unreleased
+
+### Added — attachment surface (v0.4.0)
+
+- **`mail_send_email` attachments** now accept three new optional fields,
+  exposed through the MCP layer and propagated verbatim to the upstream
+  `SendAttachment`:
+  - **`content_disposition`** (`"inline"` | `"attachment"`) — controls
+    whether the attachment is rendered inline (e.g. embedded image in
+    HTML via `<img src="cid:...">`) or as a downloadable file. Default
+    upstream behavior (omitted) is attachment. Validated client-side
+    against the SDK enum; typos fail fast before the round-trip.
+  - **`content_id`** (`str`) — sets the Content-ID header so the
+    attachment can be referenced inline via `<img src="cid:logo">` etc.
+    Pair with `content_disposition="inline"` for embedded HTML images.
+  - **`url`** (`str`) — public URL the AgentMail upstream fetches
+    server-side. **Mutually exclusive with `content_base64`**. Bypasses
+    the 6 MB request-body cap on the upstream side (up to ~30 MB total
+    per message). Useful for large PDFs / datasets / MinIO-signed-URL
+    flows; makes the `MinIO self-hosted` workaround proposed in the
+    2026-08-21 issue unnecessary as a primary strategy.
+- **`ALLOWED_CONTENT_DISPOSITIONS`** constant in `constants.py`
+  (single source of truth for the enum + audit trail).
+
+### Changed — `_to_sdk_attachments` (v0.4.0)
+
+- Now **omits `content`** entirely when only `url` is set, so the wire
+  body is clean (`{"url": "..."}`) instead of `{"url": "...",
+  "content": null}`.
+- Docstring updated to cover the new fields and to document the
+  `content_base64` → `content` rename.
+
+### Changed — cap and validation (v0.3.6, shipped with v0.4.0)
+
+- **`MAX_ATTACHMENT_BINARY_BYTES` shrunk from 20 MB to 6 MB**
+  (`constants.py`), aligned with the AgentMail upstream total-request
+  limit documented on `SendAttachment.content`. Drift between the
+  client-side cap and the upstream constraint is closed.
+- `_validate_attachments` now rejects attachments with **both**
+  `content_base64` and `url` set (mutual exclusion enforced by upstream
+  `SendAttachment`), and rejects attachments with **neither** (would be
+  silently sent as empty by the upstream — same failure mode as the
+  2026-08-21 bug, just via a different code path).
+- Error message on size violation now mentions the `url` field as the
+  escape hatch for files larger than 6 MB.
+
+### Added — regression coverage (v0.3.6 wire-level, v0.4.0 fields)
+
+- **Wire-level** tests in `tests/test_mcp_transport_contract.py` (mock
+  HTTP via `respx`, no network) covering the actual JSON shape sent to
+  `POST /v0/inboxes/{id}/messages/send`:
+  - `content_base64` must be renamed to `content` on the wire
+    (regression guard for the 2026-08-21 fix).
+  - Oversized attachments are rejected before the round-trip.
+  - 5 MB attachments reach the wire (just under the new cap).
+  - `content_disposition` and `content_id` propagate verbatim.
+  - `url`-backed attachments omit `content`.
+- **Handler-level** tests in `tests/tools/test_messages.py` covering
+  the new validation:
+  - `content_disposition` enum validation (rejects `"inlined"` etc.).
+  - `content_base64` / `url` mutual exclusion.
+  - Neither-content-nor-url rejection.
+- **Live integration** tests in `tests/integration/` (opt-in via
+  `AGENTMAIL_LIVE_TEST=1`) confirm the v0.3.5 fix end-to-end against
+  the real AgentMail API: a `.md` and a `.pdf` attachment both
+  round-trip and appear in `mail_read_message` of the recipient inbox.
+
+### Tests
+
+- 220 → **228 passed** (+8 net: 3 wire-level v0.3.6, 2 wire-level
+  v0.4.0, 5 handler-level v0.4.0, 2 live integration opt-in).
+  Coverage 92.01% → **92.14%** (target ≥80%).
+- 2 pre-existing failures in `tests/test_config.py` are unrelated to
+  this release — they are caused by `ServerConfig` reading the local
+  `.env` file (a Pydantic-Settings default) and so leaking env values
+  into unit tests that try to simulate "missing env". Reproducible
+  in CI by deleting `.env`. Tracked separately; fix is to add
+  `_env_file=None` to test fixtures or pass an explicit `_env_file`
+  path under `tests/`.
+- Lint: `uv run ruff check .` clean. `uv run ruff format --check .`
+  clean.
+
 ## [0.3.5] — 2026-09-25
 
 ### Changed

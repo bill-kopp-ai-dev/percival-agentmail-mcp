@@ -12,6 +12,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from percival_agentmail_mcp.client import AgentMailClientWrapper
 from percival_agentmail_mcp.config import ServerConfig
 from percival_agentmail_mcp.constants import (
+    ALLOWED_CONTENT_DISPOSITIONS,
     MAX_ATTACHMENT_BINARY_BYTES,
     MAX_RESULTS_CAP,
 )
@@ -31,13 +32,41 @@ def _validate_attachments(attachments: list[dict] | None) -> None:
     Compares against ``MAX_ATTACHMENT_BINARY_BYTES`` after base64-decoding
     each attachment's ``content_base64`` payload. Rejects malformed
     base64 outright instead of letting it reach the API.
+
+    v0.4.0 also validates the optional ``content_disposition`` field and
+    the mutual exclusion of ``content_base64`` / ``url`` (upstream
+    ``SendAttachment`` accepts one or the other, never both; if neither
+    is set, the upstream silently sends an empty attachment).
     """
     if not attachments:
         return
     total_binary = 0
     for idx, att in enumerate(attachments):
+        # --- v0.4.0: validate content_disposition enum ---
+        disp = att.get("content_disposition")
+        if disp is not None and disp not in ALLOWED_CONTENT_DISPOSITIONS:
+            raise ValueError(
+                f"Attachment #{idx + 1} has invalid content_disposition: {disp!r}. "
+                f"Must be one of {sorted(ALLOWED_CONTENT_DISPOSITIONS)}."
+            )
+
+        # --- v0.4.0: validate content / url mutual exclusion ---
+        has_content = bool(att.get("content_base64"))
+        has_url = bool(att.get("url"))
+        if has_content and has_url:
+            raise ValueError(
+                f"Attachment #{idx + 1} has both `content_base64` and `url`; "
+                "provide only one. The AgentMail upstream `SendAttachment` "
+                "accepts either `content` or `url`, not both."
+            )
+        if not has_content and not has_url:
+            raise ValueError(f"Attachment #{idx + 1} must provide either `content_base64` or `url`.")
+
         b64 = att.get("content_base64", "")
         if not b64:
+            # URL-backed attachment: no base64 to decode or size-check.
+            # The upstream fetches the URL server-side and applies its
+            # own ~30 MB total-per-message cap for URL-backed attachments.
             continue
         try:
             decoded = base64.b64decode(b64, validate=True)
@@ -45,26 +74,43 @@ def _validate_attachments(attachments: list[dict] | None) -> None:
             raise ValueError(f"Attachment #{idx + 1} has invalid base64 content: {exc}") from exc
         total_binary += len(decoded)
         if total_binary > MAX_ATTACHMENT_BINARY_BYTES:
-            raise ValueError(f"Attachments exceed the 20 MB limit (received {total_binary} decoded bytes).")
+            mb_limit = MAX_ATTACHMENT_BINARY_BYTES // (1024 * 1024)
+            raise ValueError(
+                f"Attachments exceed the {mb_limit} MB limit "
+                f"(received {total_binary} decoded bytes). The AgentMail "
+                f"upstream caps the total request body at {mb_limit} MB; for "
+                f"larger files, use the ``url`` field to point at a publicly "
+                f"fetchable URL."
+            )
 
 
 def _to_sdk_attachments(attachments: list[dict] | None) -> list[dict] | None:
-    """Map the LLM-facing ``content_base64`` key to the SDK's ``content`` field.
+    """Map the LLM-facing attachment dict to the SDK's ``SendAttachment`` shape.
 
-    ``agentmail.attachments.types.send_attachment.SendAttachment`` only
-    recognizes ``content`` for the base64 payload; it accepts unknown
-    keys as extras (Pydantic ``extra="allow"``) instead of rejecting
-    them, so passing ``content_base64`` straight through would silently
-    send an attachment with no content. We keep ``content_base64`` as
-    the tool-facing parameter name (explicit about encoding) and
-    translate it here, right before the SDK call.
+    Field translations:
+    - ``content_base64`` (LLM-facing, explicit about encoding) is renamed
+      to ``content`` (SDK field). ``agentmail.attachments.types.
+      send_attachment.SendAttachment`` only recognizes ``content`` for the
+      base64 payload; it accepts unknown keys as extras (Pydantic
+      ``extra="allow"``) instead of rejecting them, so passing
+      ``content_base64`` straight through would silently send an
+      attachment with no content. We keep ``content_base64`` as the
+      tool-facing parameter name (explicit about encoding) and translate
+      it here, right before the SDK call.
+    - ``url``, ``content_disposition`` and ``content_id`` pass through
+      verbatim (v0.4.0).
+    - ``content`` is omitted entirely when ``content_base64`` is absent
+      (URL-backed attachment) so the SDK does not see ``content=None``.
     """
     if not attachments:
         return None
-    return [
-        {k: v for k, v in {**att, "content": att.get("content_base64")}.items() if k != "content_base64"}
-        for att in attachments
-    ]
+    result = []
+    for att in attachments:
+        sdk_att = {k: v for k, v in att.items() if k != "content_base64"}
+        if "content_base64" in att:
+            sdk_att["content"] = att["content_base64"]
+        result.append(sdk_att)
+    return result
 
 
 def register(mcp: FastMCP) -> None:
@@ -89,7 +135,12 @@ def register(mcp: FastMCP) -> None:
         You must provide plain 'text'. Providing 'html' is highly recommended for professional formatting.
         Use 'cc' and 'bcc' for additional recipients.
         Attachments (optional): list of {"filename", "content_base64", "content_type"}.
-        Maximum total base64 size: 20 MB.
+        Optional fields per attachment: ``content_disposition`` (``"inline"`` or
+        ``"attachment"``), ``content_id`` (string, for ``cid:`` references in
+        HTML), and ``url`` (public URL AgentMail fetches server-side; mutually
+        exclusive with ``content_base64``). Maximum total request body is 6 MB
+        (matches the AgentMail upstream limit; URL-backed attachments bypass
+        this cap on the upstream side).
         """
         _validate_attachments(attachments)
         norm_to = normalize_list(to)
