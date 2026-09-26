@@ -175,8 +175,12 @@ stdio entrypoint and the OCI labels.
 
 ---
 
-## ⚙️ Configuration in percival.OS (Nanobot)
-Add the following configuration to your `~/.nanobot/config.json`:
+## ⚙️ Local development (via uv)
+
+For development or when you prefer a process-per-host tool instead of
+a container, run the server straight from a source checkout using
+[`uv`](https://docs.astral.sh/uv/). Wire the resulting process into
+the same MCP clients:
 
 ```json
 {
@@ -277,22 +281,48 @@ Two intentional safeguards also fire **before** the API is called:
   `mail_mark_thread_read` all reject empty-body requests locally
   (Bugs A, R1, R3). Don't worry — the handler will tell you.
 
-## 🔁 Migration from 0.0.x
+## 🔁 Migration from 0.3.x
 
 | Change | Action |
 |---|---|
-| `AGENTMAIL_INBOX_ID` must be a valid email | Fix `.env` |
-| `__version__` now derived from package metadata | No action |
-| `scratch_test.py` removed | No action |
-| New `mail_get_attachment` and `mail_mark_thread_read` available | No action (additive) |
-| `mail_send_email` accepts `attachments` (max 20 MB base64) | Optional |
+| `mail_send_email` attachment cap reduced from 20 MB to **6 MB binary** (aligned with the upstream `SendAttachment.content` 6 MB total-request limit). | Adjust payloads; use the new `url` field for larger files (see below). |
+| `mail_send_email` attachments now accept three new optional fields: **`content_disposition`** (`"inline"` / `"attachment"`), **`content_id`** (sets `Content-ID` for inline `<img src="cid:...">` references), and **`url`** (public URL the AgentMail upstream fetches server-side; **mutually exclusive** with `content_base64`). | Optional / additive. The `url` field unlocks payloads up to ~30 MB and replaces the MinIO-self-hosted workaround for > 6 MB files. |
+| New **local-first Docker image** (multi-stage `Dockerfile`, ~262 MB, non-root UID 1000, stdio MCP via `docker run -i` or `docker compose`). | Optional. See the `## 🐳 Docker` section for recipes; no registry push and no `docker/mcp-registry` PR yet. |
+| `agentmail` Python SDK bumped to **2.0.4** (was 0.5.8) in 0.3.5. | No action — public contract is on the stable AgentMail API path `https://api.agentmail.to/v0/`. |
+| `__version__` derived from package metadata (single source of truth: `pyproject.toml`). | No action. |
+| `scratch_test.py` removed. | No action. |
 
 ---
 
-## 🛠️ Recent Maintenance (0.3.x)
+## 🛠️ Recent Maintenance (0.4.0)
 
-The 0.3.x line tightens the contract with the upstream AgentMail API
-and stamps out three categories of bugs:
+The 0.4.0 line is an **attachment surface** expansion plus first-class
+**Docker packaging**. Tool names, schema and contract semantics are
+unchanged — it is a non-breaking release.
+
+1. **Attachment surface (v0.4.0)**
+   - `mail_send_email` accepts three new optional fields:
+     `content_disposition`, `content_id`, and `url`. They propagate
+     to the upstream `SendAttachment` and are validated client-side
+     (e.g. `content_disposition` enum, mutual exclusion of
+     `content_base64` / `url`, neither-present rejection) so typos
+     fail fast before the round-trip.
+   - **Cap aligned to 6 MB binary** (was 20 MB) so the client-side
+     guard matches the upstream 6 MB total-request limit. Drift
+     closed in v0.3.6, shipped with 0.4.0.
+   - Wire-level coverage in `tests/test_mcp_transport_contract.py`
+     and handler-level coverage in `tests/tools/test_messages.py`
+     guard the regression; live integration (opt-in via
+     `AGENTMAIL_LIVE_TEST=1`) confirms `.md` and `.pdf` round-trip
+     against the real AgentMail API.
+2. **Local-first Docker image** — see `## 🐳 Docker` above.
+3. **228 → 230 tests passing**, coverage 92.14 % → 92.47 %
+   (target ≥ 80 %).
+
+### Recent Maintenance (0.3.x)
+
+The 0.3.x line tightened the contract with the upstream AgentMail API
+and stamped out three categories of bugs:
 
 1. **Wire-level contract** (Bugs A–D, 2026-07-21 incident, fixed in
    0.3.1 + 0.3.2): four MCP tools were silently posting empty bodies
@@ -308,7 +338,7 @@ and stamps out three categories of bugs:
    parameters provided") without telling the LLM what failed. It now
    parses the upstream Pydantic `ValidationErrorResponse` and
    surfaces per-field messages (`upstream_details` list, max 3)
-   alongside the human-readable wrapper. In addition, the
+   alongside the human-friendly wrapper. In addition, the
    `mail_update_inbox` handler rejects `display_name` containing `(`
    or `)` locally with a clear, actionable `ValueError` before
    paying a round-trip — the upstream rejects those characters with
@@ -321,8 +351,11 @@ See `CHANGELOG.md` for the full history.
 
 ---
 
-## �📚 About the Project
-This server is an integral module of the **percival.OS** project. It provides a secure way for Nanobot to manage external communications autonomously.
+## 📚 About the Project
+
+This server is an integral module of the **percival.OS** project. It
+provides a secure way for Nanobot to manage external communications
+autonomously.
 
 - **Main Repository**: [https://github.com/bill-kopp-ai-dev/percival.OS](https://github.com/bill-kopp-ai-dev/percival.OS)
 - **License**: MIT

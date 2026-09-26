@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
-## [0.4.0] — unreleased
+## [0.4.0] — 2026-09-26
 
 ### Added — attachment surface (v0.4.0)
 
