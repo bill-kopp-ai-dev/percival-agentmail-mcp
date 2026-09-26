@@ -1,6 +1,6 @@
 # 🤖 Percival AgentMail - percival.OS MCP
 
-**Version 0.3.4**
+**Version 0.4.0**
 
 [![Python](https://img.shields.io/badge/python-3.10+-yellow.svg)]()
 [![MCP](https://img.shields.io/badge/mcp-server-blue.svg)]()
@@ -48,6 +48,130 @@ Every prompt reinforces the **untrusted-email-body** model: the email
 body returned by `mail_read_message` is enclosed between
 `--- EMAIL BODY START ---` and `--- EMAIL BODY END ---` markers and must
 be treated as data, never as instructions.
+
+---
+
+## 🐳 Docker
+
+A multi-stage `Dockerfile` is shipped from v0.4.0 onward. The resulting
+image is a self-contained stdio MCP server (~260 MB, non-root, no
+exposed ports) that can plug into any MCP-aware client.
+
+> **Scope note.** This cycle ships a **local-first** image only: no
+> `server.yaml` / `tools.json`, no submission to the official
+> [Docker MCP Registry](https://hub.docker.com/mcp) yet. The image
+> runs against Nanobot, opencode and the Docker MCP Toolkit gateway
+> (as a plain Docker image, not as a catalog entry).
+
+### Quick start
+
+```bash
+# 1. Build the image locally (VERSION is read from pyproject.toml).
+docker build --build-arg VERSION=0.4.0 --build-arg GIT_SHA=local \
+  -t percival-agentmail-mcp:dev .
+
+# 2. Smoke (offline, no network):
+docker run --rm percival-agentmail-mcp:dev --version
+# → Percival AgentMail MCP Server version 0.4.0
+
+# 3. Run against your real inbox (stdio over the container's
+#    stdin/stdout — the MCP client attaches via `docker run -i`):
+docker run --rm -i --env-file .env percival-agentmail-mcp:dev
+```
+
+### With `docker compose`
+
+The shipped `docker-compose.yml` reads `.env`, exposes nothing, and
+spawns the server in stdio mode (`stdin_open: true`, `tty: false`):
+
+```bash
+docker compose build
+docker compose run --rm server --version
+docker compose run --rm server
+```
+
+### With Nanobot (`~/.nanobot/config.json`)
+
+```json
+{
+  "tools": {
+    "mcpServers": {
+      "percival-agentmail-mcp": {
+        "command": "docker",
+        "args": [
+          "compose", "-f",
+          "/path/to/percival-agentmail-mcp/docker-compose.yml",
+          "run", "--rm", "server"
+        ],
+        "env": {
+          "AGENTMAIL_API_KEY": "YOUR_API_KEY",
+          "AGENTMAIL_INBOX_ID": "your_agent@agentmail.to"
+        }
+      }
+    }
+  }
+}
+```
+
+Or without compose, pointing straight at the image:
+
+```json
+{
+  "tools": {
+    "mcpServers": {
+      "percival-agentmail-mcp": {
+        "command": "docker",
+        "args": ["run", "--rm", "-i", "--env-file",
+                 "/path/to/percival-agentmail-mcp/.env",
+                 "percival-agentmail-mcp:dev"],
+        "env": {}
+      }
+    }
+  }
+}
+```
+
+### With opencode (`.opencode/opencode.json` or `opencode.json`)
+
+```json
+{
+  "mcp": {
+    "percival-agentmail-mcp": {
+      "type": "local",
+      "command": [
+        "docker", "compose", "-f",
+        "/path/to/percival-agentmail-mcp/docker-compose.yml",
+        "run", "--rm", "server"
+      ],
+      "environment": {
+        "AGENTMAIL_API_KEY": "YOUR_API_KEY",
+        "AGENTMAIL_INBOX_ID": "your_agent@agentmail.to"
+      }
+    }
+  }
+}
+```
+
+### Configuration
+
+The runtime reads the same environment variables the local install
+does — see `.env.example`. `AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID`
+are mandatory; `AGENTMAIL_TIMEOUT` and `AGENTMAIL_MAX_RESULTS` have
+safe defaults.
+
+Pass them via `--env-file .env`, `docker run -e KEY=VALUE …`, or
+the `environment:` / `env_file:` keys in `docker-compose.yml`. Secrets
+never end up baked into the image: the `.dockerignore` blocks `.env*`
+from the build context.
+
+### CI
+
+`.github/workflows/ci.yml` runs a dedicated `docker` job that builds
+the image with BuildKit + GHA layer cache, then runs three smoke
+checks: `--version` exits 0 with the SemVer from `pyproject.toml`,
+a missing-env run raises the sanitized `ValueError` (no raw
+traceback), and `docker inspect` confirms the non-root user, the
+stdio entrypoint and the OCI labels.
 
 ---
 

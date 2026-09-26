@@ -71,6 +71,51 @@ versioning follows [SemVer](https://semver.org/).
   the real AgentMail API: a `.md` and a `.pdf` attachment both
   round-trip and appear in `mail_read_message` of the recipient inbox.
 
+### Added — Docker packaging (v0.4.0)
+
+- **Multi-stage `Dockerfile`** that produces a self-contained stdio
+  MCP image:
+  - **Builder stage** uses `ghcr.io/astral-sh/uv:0.5.11-python3.12-bookworm-slim`
+    and installs the package in non-editable mode into `/app/.venv`,
+    with a BuildKit cache mount on `/root/.cache/uv` so CI warm runs
+    skip the dependency-resolution layer.
+  - **Runtime stage** is `python:3.12-slim` running as a fixed
+    non-root user (`app`, UID 1000) with `ENTRYPOINT ["percival-agentmail-mcp"]`
+    and `CMD []`. No TCP ports are exposed — stdio MCP only.
+  - **Build args** `VERSION` (SemVer from `pyproject.toml`) and
+    `GIT_SHA` (short commit) flow into OCI image labels
+    (`org.opencontainers.image.version` / `.revision`) so registries,
+    scanners and `docker inspect` stay truthful across local dev and
+    CI builds.
+  - The builder stage is pinned to `/app` as its WORKDIR so the venv
+    is produced at its eventual runtime path — the absolute shebangs
+    inside console_scripts stay valid after `COPY --from=builder`.
+- **`.dockerignore`** that mirrors the repository's `.gitignore` plus
+  `tests/`, `*.egg-info`, IDE noise and Docker artefacts themselves;
+  prevents accidental secret/`.env` embedding and keeps the build
+  context small.
+- **`docker-compose.yml`** local recipe: build + env_file + stdio
+  (`stdin_open: true`, `tty: false`); ready for Nanobot, opencode,
+  Claude Desktop, VS Code or any MCP-aware client.
+- **CI job `docker`** (`.github/workflows/ci.yml`):
+  - Resolves `VERSION` from `pyproject.toml` and `GIT_SHA` from
+    `GITHUB_SHA`, then builds with BuildKit + GHA layer cache.
+  - **Smoke `--version`** asserts the package version reported by
+    the running container equals the SemVer from `pyproject.toml`.
+  - **Smoke no-env** asserts the lifespan raises the sanitized
+    `ValueError("Missing or invalid AgentMail configuration...")`
+    without dumping a raw traceback to the MCP client.
+  - **Inspect** dumps image size, user, entrypoint and OCI labels
+    for audit.
+
+### Changed — README (v0.4.0)
+
+- Header version bumped `0.3.4` → `0.4.0`.
+- New `## Docker` section with three recipes (direct `docker run`,
+  `docker compose`, integration with Nanobot and opencode) and an
+  explicit note that no `server.yaml` / `tools.json` is shipped yet —
+  that work is deferred until a Docker MCP Registry PR is opened.
+
 ### Tests
 
 - 220 → **228 passed** (+8 net: 3 wire-level v0.3.6, 2 wire-level
