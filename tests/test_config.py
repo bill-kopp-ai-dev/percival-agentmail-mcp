@@ -1,5 +1,7 @@
 """Tests for ServerConfig (Fase 1 — config security)."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -13,7 +15,12 @@ from percival_agentmail_mcp.config import (
 
 @pytest.fixture
 def mock_config() -> ServerConfig:
+    # ``_env_file=None`` disables Pydantic-Settings' default search for a
+    # ``.env`` file in ``cwd``. Without this, a developer's local ``.env``
+    # leaks values like ``AGENTMAIL_MAX_RESULTS=50`` into the assertion
+    # ``max_results == 25`` below. Tests must be hermetic.
     return ServerConfig(
+        _env_file=None,
         api_key="am_test_key_supersecret123",
         inbox_id="test@agentmail.to",
     )
@@ -117,7 +124,11 @@ def test_config_pydantic_dict_masks_api_key(mock_config: ServerConfig) -> None:
 # --- load_config ---
 
 
-def test_load_config_missing_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_config_missing_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # ``monkeypatch.chdir`` puts us in an empty tempdir so Pydantic-Settings
+    # does not find a stray ``.env`` file (the developer's local one would
+    # otherwise satisfy the required env vars and mask the missing-env path).
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("AGENTMAIL_API_KEY", raising=False)
     monkeypatch.delenv("AGENTMAIL_INBOX_ID", raising=False)
     with pytest.raises(ValueError) as exc:
