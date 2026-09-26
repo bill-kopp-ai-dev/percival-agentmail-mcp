@@ -1,0 +1,60 @@
+# VCS metadata — never needed at build time.
+.git
+.gitignore
+.gitattributes
+.github
+
+# Python build/cache artefacts — never shipped to the runtime image.
+.venv
+venv
+env
+__pycache__
+*.py[cod]
+*$py.class
+*.egg-info
+dist
+build
+.pytest_cache
+.ruff_cache
+.mypy_cache
+htmlcov
+.coverage
+.coverage.*
+
+# Test suite — keeps the build context small. Tests still run in CI
+# against the source checkout before the image is built.
+tests
+
+# Local logs and coverage reports.
+*.log
+
+# Secrets and local config — must never be embedded into the image.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local issue drafts (raw imports from Gmail/PDF, not for version
+# control).
+docs/issues
+
+# IDE / OS noise.
+.idea
+.vscode
+.DS_Store
+*.swp
+*.swo
+
+# Docker artefacts — avoid recursion in the build context.
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+
+# Positronic project metadata — never shipped to the runtime image.
+.positronic/
+
+# Scratch scripts (precedent: scratch_test.py was removed in 0.2.0
+# because it contained hardcoded PII; never let them reappear).
+scratch_*.py

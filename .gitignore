@@ -26,9 +26,14 @@ build/
 
 # Test / Cache
 .pytest_cache/
-.ruff_cache/
 htmlcov/
 .coverage
 
 # Local issue drafts (raw imports from Gmail/PDF, not for version control)
 docs/issues/
+
+# Positronic project metadata — internal, lives on the operator's
+# machine under .positronic/PROJECT.md and the journal service. Never
+# publish it to the public repo: it duplicates governance fields that
+# are already tracked in the global Positronic journal and policy.
+.positronic/

@@ -1,0 +1,82 @@
+# docker-compose.yml — local development recipe for the Percival
+# AgentMail MCP server.
+#
+# This file is the canonical way to run the server as a stdio MCP
+# transport, ready to plug into Nanobot, opencode, Claude Desktop,
+# VS Code, or any other MCP-aware client.
+#
+# Quick start
+# -----------
+#   1. Copy `.env.example` to `.env` and fill in `AGENTMAIL_API_KEY`
+#      and `AGENTMAIL_INBOX_ID`.
+#   2. Build the image:   docker compose build
+#   3. Smoke (offline):   docker compose run --rm server --version
+#   4. Spawn stdio:       docker compose run --rm server
+#
+# Wiring into Nanobot (`~/.nanobot/config.json`)
+# ----------------------------------------------
+#   {
+#     "tools": {
+#       "mcpServers": {
+#         "percival-agentmail-mcp": {
+#           "command": "docker",
+#           "args": [
+#             "compose", "-f", "/path/to/percival-agentmail-mcp/docker-compose.yml",
+#             "run", "--rm", "server"
+#           ],
+#           "env": {
+#             "AGENTMAIL_API_KEY": "YOUR_API_KEY",
+#             "AGENTMAIL_INBOX_ID": "your_agent@agentmail.to"
+#           }
+#         }
+#       }
+#     }
+#   }
+#
+# Wiring into opencode (`.opencode/opencode.json` or `opencode.json`)
+# --------------------------------------------------------------------
+#   {
+#     "mcp": {
+#       "percival-agentmail-mcp": {
+#         "type": "local",
+#         "command": ["docker", "compose", "-f",
+#                     "/path/to/percival-agentmail-mcp/docker-compose.yml",
+#                     "run", "--rm", "server"],
+#         "environment": {
+#           "AGENTMAIL_API_KEY": "YOUR_API_KEY",
+#           "AGENTMAIL_INBOX_ID": "your_agent@agentmail.to"
+#         }
+#       }
+#     }
+#   }
+#
+# Or use the image directly (no compose):
+#   docker run --rm -i percival-agentmail-mcp:dev
+# with `AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID` exported in the
+# shell or passed via `--env-file .env`.
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "0.4.0"
+        GIT_SHA: "local"
+    image: percival-agentmail-mcp:dev
+    init: true
+    stdin_open: true
+    tty: false
+    env_file:
+      - .env
+    environment:
+      # env_file values are loaded first; explicit overrides here make
+      # CI / smoke runs reproducible when `.env` is absent.
+      AGENTMAIL_API_KEY: ${AGENTMAIL_API_KEY:-}
+      AGENTMAIL_INBOX_ID: ${AGENTMAIL_INBOX_ID:-}
+      AGENTMAIL_TIMEOUT: ${AGENTMAIL_TIMEOUT:-30}
+      AGENTMAIL_MAX_RESULTS: ${AGENTMAIL_MAX_RESULTS:-25}
+    # stdio MCP transport: no ports exposed, no healthcheck (stdio has
+    # no HTTP endpoint). The MCP client attaches to the container's
+    # stdin and reads stdout; SIGTERM cleanly closes the AgentMail
+    # httpx pool via the server lifespan shutdown hook (HIGH-03).
