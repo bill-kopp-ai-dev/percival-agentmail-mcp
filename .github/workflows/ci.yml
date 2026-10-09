@@ -11,18 +11,21 @@ permissions:
 jobs:
   test:
     name: Test on Python ${{ matrix.python }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
         python: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
       - name: Sync deps
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
       - name: Lint
         run: |
           uv run ruff check .
@@ -32,7 +35,7 @@ jobs:
 
   docker:
     name: Docker build + smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Set up BuildKit
@@ -42,17 +45,16 @@ jobs:
         run: |
           # SemVer from pyproject.toml — single source of truth.
           VERSION=$(grep -E '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
-          SHORT_SHA="${GITHUB_SHA::7}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
       - name: Build image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
-            GIT_SHA=${{ steps.meta.outputs.short_sha }}
+            GIT_SHA=${{ github.sha }}
           tags: percival-agentmail-mcp:ci
           load: true
           cache-from: type=gha
@@ -66,6 +68,15 @@ jobs:
           # not a regex, and a future non-numeric build suffix would
           # otherwise need escaping.
           echo "$output" | grep -Fq "Percival AgentMail MCP Server version ${{ steps.meta.outputs.version }}"
+      - name: MCP stdio conformance (offline)
+        run: >-
+          python3 scripts/docker-ci-conformance.py
+          --image percival-agentmail-mcp:ci
+          --mock-agentmail
+          --secret-env AGENTMAIL_API_KEY=ci-sentinel-not-a-secret
+          --expected-tool mail_get_status
+          --expected-uid 1000
+          --compose-service server
       - name: Smoke (no env → sanitized failure)
         run: |
           # When no AGENTMAIL_* env is set, the server lifespan must
@@ -86,8 +97,27 @@ jobs:
           echo "=== Size ==="
           docker images percival-agentmail-mcp:ci --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}"
           echo "=== User ==="
-          docker inspect percival-agentmail-mcp:ci --format '{{.Config.User}}'
+          test "$(docker inspect percival-agentmail-mcp:ci --format '{{.Config.User}}')" != ""
+          test "$(docker inspect percival-agentmail-mcp:ci --format '{{json .Config.ExposedPorts}}')" = "null"
+          test "$(docker inspect percival-agentmail-mcp:ci --format '{{json .Config.Healthcheck}}')" = "null"
           echo "=== Entrypoint ==="
           docker inspect percival-agentmail-mcp:ci --format '{{json .Config.Entrypoint}} {{json .Config.Cmd}}'
           echo "=== OCI labels ==="
           docker inspect percival-agentmail-mcp:ci --format '{{json .Config.Labels}}' | python3 -m json.tool
+      - name: Write build manifest
+        run: python3 scripts/write_docker_ci_manifest.py --image percival-agentmail-mcp:ci --source-sha "$GITHUB_SHA" --lock uv.lock --output docker-build-manifest.json
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: percival-agentmail-mcp:ci
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          upload-artifact: false
+      - name: Upload image evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-evidence-agentmail-${{ github.sha }}
+          path: |
+            docker-build-manifest.json
+            sbom.cdx.json
+          if-no-files-found: error
