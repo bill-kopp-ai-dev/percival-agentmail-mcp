@@ -27,7 +27,7 @@ ARG UV_VERSION=0.5.11
 # uv writes the virtualenv and console_script shebangs to /app/.venv
 # from the start. Copying the venv verbatim into the runtime stage
 # therefore preserves the absolute paths the scripts depend on.
-FROM ghcr.io/astral-sh/uv:${UV_VERSION}-python${PYTHON_VERSION}-bookworm-slim AS builder
+FROM ghcr.io/astral-sh/uv:${UV_VERSION}-python${PYTHON_VERSION}-bookworm-slim@sha256:cc9311ae7d42ccb51f6ac10c8ab8526de8a3f484b36349fd87af8e5ced7079c0 AS builder
 
 ARG VERSION=0.0.0
 ARG GIT_SHA=unknown
@@ -60,7 +60,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ---------------------------------------------------------------------
 #  Stage 2 — runtime (slim Python, non-root, stdio MCP)
 # ---------------------------------------------------------------------
-FROM python:${PYTHON_VERSION}-slim AS runtime
+FROM python:${PYTHON_VERSION}-slim@sha256:2b4f19dae3a777dfc3b76730bda1e82e1f66ab2a2686fa93ca78edbfb4f04ffe AS runtime
 
 ARG VERSION=0.0.0
 ARG GIT_SHA=unknown
@@ -70,13 +70,20 @@ ARG GIT_SHA=unknown
 # preserving the historical team attribution.
 LABEL org.opencontainers.image.title="Percival AgentMail MCP" \
       org.opencontainers.image.description="Percival AgentMail MCP server — the Nanobot agent's own email service" \
-      org.opencontainers.image.source="https://github.com/bill-kopp-ai-dev/percival.OS" \
-      org.opencontainers.image.documentation="https://github.com/bill-kopp-ai-dev/percival.OS/blob/main/percival-agentmail-mcp/README.md" \
+      org.opencontainers.image.source="https://github.com/bill-kopp-ai-dev/percival-agentmail-mcp" \
+      org.opencontainers.image.documentation="https://github.com/bill-kopp-ai-dev/percival-agentmail-mcp/blob/main/README.md" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.authors="Positronic Bean Labs (historically: percival.OS Team)" \
       org.opencontainers.image.vendor="Positronic Bean Labs" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}"
+
+ARG DEBIAN_SNAPSHOT=20261005T000000Z
+RUN sed -i "s|http://deb.debian.org/debian-security|http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}|" /etc/apt/sources.list.d/debian.sources \
+    && sed -i "s|http://deb.debian.org/debian |http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/|" /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Check-Valid-Until=false update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 # Non-root user. Fixed UID/GID (1000/1000) so the image is portable
 # across CI runners and developer hosts. No password, no shell.
