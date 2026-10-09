@@ -81,13 +81,13 @@ docker run --rm -i --env-file .env percival-agentmail-mcp:dev
 
 ### With `docker compose`
 
-The shipped `docker-compose.yml` reads `.env`, exposes nothing, and
+The shipped `docker-compose.yml` optionally reads `.env`, exposes nothing, and
 spawns the server in stdio mode (`stdin_open: true`, `tty: false`):
 
 ```bash
 docker compose build
-docker compose run --rm server --version
-docker compose run --rm server
+docker compose run --rm -T server --version
+docker compose run --rm -T server
 ```
 
 ### With Nanobot (`~/.nanobot/config.json`)
@@ -101,7 +101,7 @@ docker compose run --rm server
         "args": [
           "compose", "-f",
           "/path/to/percival-agentmail-mcp/docker-compose.yml",
-          "run", "--rm", "server"
+          "run", "--rm", "-T", "server"
         ],
         "env": {
           "AGENTMAIL_API_KEY": "YOUR_API_KEY",
@@ -141,7 +141,7 @@ Or without compose, pointing straight at the image:
       "command": [
         "docker", "compose", "-f",
         "/path/to/percival-agentmail-mcp/docker-compose.yml",
-        "run", "--rm", "server"
+        "run", "--rm", "-T", "server"
       ],
       "environment": {
         "AGENTMAIL_API_KEY": "YOUR_API_KEY",
