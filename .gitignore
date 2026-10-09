@@ -37,3 +37,6 @@ docs/issues/
 # publish it to the public repo: it duplicates governance fields that
 # are already tracked in the global Positronic journal and policy.
 .positronic/
+
+# Local Percival integration working note (not for the public repo)
+docs/percival-integration.md
