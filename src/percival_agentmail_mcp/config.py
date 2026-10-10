@@ -6,9 +6,10 @@ at startup, never at runtime. Sensitive values are masked in any
 """
 
 import logging
+from pathlib import Path
 from typing import Any
 
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,10 @@ class ServerConfig(BaseSettings):
         ...,
         min_length=8,
         description="AgentMail API key. Must have at least 8 characters.",
+    )
+    api_key_file: Path | None = Field(
+        default=None,
+        description="Optional mounted file containing the AgentMail API key.",
     )
     inbox_id: EmailStr = Field(
         ...,
@@ -54,6 +59,19 @@ class ServerConfig(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def load_api_key_file(cls, values: Any) -> Any:
+        if not isinstance(values, dict) or values.get("api_key") or not values.get("api_key_file"):
+            return values
+        path = Path(values["api_key_file"])
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("AGENTMAIL_API_KEY_FILE must refer to a regular file")
+        key = path.read_text(encoding="utf-8").strip()
+        if not key:
+            raise ValueError("AGENTMAIL_API_KEY_FILE is empty")
+        return {**values, "api_key": key}
 
     # LOW-01: bloqueia repr/str padrão que poderiam vazar a api_key
     def __repr__(self) -> str:

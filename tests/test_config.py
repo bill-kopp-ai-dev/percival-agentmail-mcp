@@ -90,6 +90,27 @@ def test_config_env_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.inbox_id == "env@agentmail.to"
 
 
+def test_config_loads_api_key_from_mounted_file(tmp_path: Path) -> None:
+    key_file = tmp_path / "agentmail-api-key"
+    key_file.write_text("am_file_secret_for_test\n", encoding="utf-8")
+
+    cfg = ServerConfig(_env_file=None, api_key_file=key_file, inbox_id="file@agentmail.to")
+
+    assert cfg.api_key == "am_file_secret_for_test"
+    assert "am_file_secret_for_test" not in repr(cfg)
+    assert "am_file_secret_for_test" not in str(cfg.model_dump())
+
+
+def test_config_rejects_symlinked_api_key_file(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.write_text("am_file_secret_for_test", encoding="utf-8")
+    link = tmp_path / "api-key"
+    link.symlink_to(target)
+
+    with pytest.raises(ValidationError, match="regular file"):
+        ServerConfig(_env_file=None, api_key_file=link, inbox_id="file@agentmail.to")
+
+
 # --- Secrets hygiene (LOW-01) ---
 
 
