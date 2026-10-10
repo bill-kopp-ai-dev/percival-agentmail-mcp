@@ -157,10 +157,12 @@ Or without compose, pointing straight at the image:
 The runtime reads the same environment variables the local install
 does — see `.env.example`. `AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID`
 are mandatory; `AGENTMAIL_TIMEOUT` and `AGENTMAIL_MAX_RESULTS` have
-safe defaults.
+safe defaults. For a mounted read-only credential, set
+`AGENTMAIL_API_KEY_FILE`; it is used only when `AGENTMAIL_API_KEY` is unset.
 
 Pass them via `--env-file .env`, `docker run -e KEY=VALUE …`, or
-the `environment:` / `env_file:` keys in `docker-compose.yml`. Secrets
+the `environment:` / `env_file:` keys in `docker-compose.yml`. Mount the
+API-key file read-only when using `AGENTMAIL_API_KEY_FILE`. Secrets
 never end up baked into the image: the `.dockerignore` blocks `.env*`
 from the build context.
 
