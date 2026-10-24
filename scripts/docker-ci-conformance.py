@@ -89,7 +89,7 @@ def main() -> int:
     network = f"agentmail-ci-{uuid.uuid4().hex[:10]}" if args.mock_agentmail else "none"
     mock_name = f"agentmail-mock-{uuid.uuid4().hex[:10]}"
     tempdir = tempfile.TemporaryDirectory(prefix="percival-agentmail-ci-") if args.mock_agentmail else None
-    command = ["docker", "run", "--rm", "-i", f"--network={network}"]
+    command = ["docker", "run", "--rm", "-i", "--init", f"--network={network}"]
     if args.mock_agentmail:
         subprocess.run(["docker", "network", "create", "--internal", network], check=True, capture_output=True)
         mock_server = "\n".join(

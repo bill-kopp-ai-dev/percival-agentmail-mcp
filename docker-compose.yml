@@ -51,7 +51,7 @@
 #   }
 #
 # Or use the image directly (no compose):
-#   docker run --rm -i percival-agentmail-mcp:dev
+#   docker run --rm -i --init percival-agentmail-mcp:dev
 # with `AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID` exported in the
 # shell or passed via `--env-file .env`.
 

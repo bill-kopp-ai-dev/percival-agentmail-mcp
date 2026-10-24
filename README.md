@@ -76,7 +76,7 @@ docker run --rm percival-agentmail-mcp:dev --version
 
 # 3. Run against your real inbox (stdio over the container's
 #    stdin/stdout — the MCP client attaches via `docker run -i`):
-docker run --rm -i --env-file .env percival-agentmail-mcp:dev
+docker run --rm -i --init --env-file .env percival-agentmail-mcp:dev
 ```
 
 ### With `docker compose`
