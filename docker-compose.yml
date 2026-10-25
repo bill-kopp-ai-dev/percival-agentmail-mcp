@@ -5,13 +5,41 @@
 # transport, ready to plug into Nanobot, opencode, Claude Desktop,
 # VS Code, or any other MCP-aware client.
 #
+# Secret delivery (F4 contract)
+# -----------------------------
+# The API key is NEVER passed as an environment value: `docker compose
+# config` renders the effective environment, and a credential that lives
+# there ends up in logs, bug reports and inventories. The key is
+# delivered as a file instead:
+#
+#   1. Store the key in a file OUTSIDE this repository, readable only
+#      by the operator, e.g.:
+#
+#        install -m 600 /dev/null "$HOME/.config/percival/agentmail_api_key"
+#        printf '%s' "$AGENTMAIL_API_KEY" > "$HOME/.config/percival/agentmail_api_key"
+#
+#   2. Point the recipe at that file (export it, or put its path in a
+#      gitignored .env next to this file):
+#
+#        export AGENTMAIL_API_KEY_FILE="$HOME/.config/percival/agentmail_api_key"
+#
+#   3. The server reads AGENTMAIL_API_KEY_FILE from inside the container;
+#      Compose mounts the file read-only at /run/secrets/.
+#   4. Store the inbox identifier in a second file, outside this repository:
+#        install -m 600 /dev/null "$HOME/.config/percival/agentmail_inbox_id"
+#        printf '%s' "$AGENTMAIL_INBOX_ID" > "$HOME/.config/percival/agentmail_inbox_id"
+#      Export AGENTMAIL_INBOX_ID_FILE to that host path.
+#
+# `.env` (optional, gitignored) may hold AGENTMAIL_TIMEOUT and
+# AGENTMAIL_MAX_RESULTS. The inbox identifier is treated as sensitive and
+# uses its own read-only file secret, just like the API key.
+#
 # Quick start
 # -----------
-#   1. Set `AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID` in the process
-#      environment (or in an optional local `.env` file).
-#   2. Build the image:   docker compose build
-#   3. Smoke (offline):   docker compose run --rm server --version
-#   4. Spawn stdio:       docker compose run --rm server
+#   - Create the API-key and inbox-ID files as described above.
+#   - Build the image:   docker compose build
+#   - Smoke (offline):   docker compose run --rm --entrypoint /app/.venv/bin/percival-agentmail-mcp server --version
+#   - Spawn stdio:       docker compose run --rm server
 #
 # Wiring into Nanobot (`~/.nanobot/config.json`)
 # ----------------------------------------------
@@ -25,8 +53,8 @@
 #             "run", "--rm", "-T", "server"
 #           ],
 #           "env": {
-#             "AGENTMAIL_API_KEY": "YOUR_API_KEY",
-#             "AGENTMAIL_INBOX_ID": "your_agent@agentmail.to"
+#             "AGENTMAIL_API_KEY_FILE": "/home/you/.config/percival/agentmail_api_key",
+#             "AGENTMAIL_INBOX_ID_FILE": "/home/you/.config/percival/agentmail_inbox_id"
 #           }
 #         }
 #       }
@@ -43,8 +71,8 @@
 #                     "/path/to/percival-agentmail-mcp/docker-compose.yml",
 #                     "run", "--rm", "-T", "server"],
 #         "environment": {
-#           "AGENTMAIL_API_KEY": "YOUR_API_KEY",
-#           "AGENTMAIL_INBOX_ID": "your_agent@agentmail.to"
+#           "AGENTMAIL_API_KEY_FILE": "/home/you/.config/percival/agentmail_api_key",
+#           "AGENTMAIL_INBOX_ID_FILE": "/home/you/.config/percival/agentmail_inbox_id"
 #         }
 #       }
 #     }
@@ -52,8 +80,9 @@
 #
 # Or use the image directly (no compose):
 #   docker run --rm -i --init percival-agentmail-mcp:dev
-# with `AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID` exported in the
-# shell or passed via `--env-file .env`.
+# with `AGENTMAIL_API_KEY` (or `AGENTMAIL_API_KEY_FILE`) exported in the
+# shell or passed via `--env-file`. Secrets never end up baked into the
+# image: the `.dockerignore` blocks `.env*` files.
 
 services:
   server:
@@ -68,17 +97,52 @@ services:
     stdin_open: true
     tty: false
     restart: "no"
-    env_file:
-      - path: ./.env
-        required: false
+    # Hardened runtime (F4): the image writes nothing outside /tmp, so
+    # the root filesystem is read-only and /tmp is a small tmpfs.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Matches the `app` user (uid 1000, gid 1000) baked into the image.
+    user: "1000:1000"
     environment:
-      # env_file values are loaded first; explicit overrides here make
-      # CI / smoke runs reproducible when `.env` is absent.
-      AGENTMAIL_API_KEY: ${AGENTMAIL_API_KEY:-}
-      AGENTMAIL_INBOX_ID: ${AGENTMAIL_INBOX_ID:-}
+      # Explicit transport contract: this server speaks stdio only.
+      MCP_TRANSPORT: stdio
+      # Secret by reference, never by value: the path the server reads
+      # inside the container. The host-side path is picked up from
+      # AGENTMAIL_API_KEY_FILE when the secret below is defined.
+      AGENTMAIL_API_KEY_FILE: /run/secrets/agentmail_api_key
+      # The inbox ID remains in a mounted file and is loaded by the recipe
+      # wrapper below; the API key is read natively by the server.
+      AGENTMAIL_INBOX_ID_FILE: /run/secrets/agentmail_inbox_id
+      # Non-secret settings come from the operator's shell or the project
+      # `.env`. They are declared here by name so `docker compose config`
+      # renders only these keys.
       AGENTMAIL_TIMEOUT: ${AGENTMAIL_TIMEOUT:-30}
       AGENTMAIL_MAX_RESULTS: ${AGENTMAIL_MAX_RESULTS:-25}
+    # The API key is mounted read-only from a path outside the
+    # repository. `create_host_path: false` makes a missing key file a
+    # loud startup failure instead of a silently created directory.
+    secrets:
+      - source: agentmail_api_key
+        target: agentmail_api_key
+      - source: agentmail_inbox_id
+        target: agentmail_inbox_id
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        AGENTMAIL_INBOX_ID="$$(cat /run/secrets/agentmail_inbox_id)"
+        export AGENTMAIL_INBOX_ID
+        exec /app/.venv/bin/percival-agentmail-mcp
     # stdio MCP transport: no ports exposed, no healthcheck (stdio has
     # no HTTP endpoint). The MCP client attaches to the container's
     # stdin and reads stdout; SIGTERM cleanly closes the AgentMail
     # httpx pool via the server lifespan shutdown hook (HIGH-03).
+
+secrets:
+  agentmail_api_key:
+    file: ${AGENTMAIL_API_KEY_FILE:-${HOME}/.config/percival/agentmail_api_key}
+  agentmail_inbox_id:
+    file: ${AGENTMAIL_INBOX_ID_FILE:-${HOME}/.config/percival/agentmail_inbox_id}
