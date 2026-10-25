@@ -1,3 +1,11 @@
+# Only inputs copied by the Dockerfile enter the context.
+**
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!src/**
+
 # VCS metadata — never needed at build time.
 .git
 .gitignore
@@ -62,3 +70,18 @@ AGENTS.md
 # Scratch scripts (precedent: scratch_test.py was removed in 0.2.0
 # because it contained hardcoded PII; never let them reappear).
 scratch_*.py
+
+# Apply the state/secret boundary inside copied source trees too.
+**/.venv/
+**/.positronic/
+**/.env
+**/.env.*
+**/secrets/
+**/*.pem
+**/*.key
+**/__pycache__/
+**/.cache/
+**/AGENTS.md
+**/.pytest_cache/
+**/node_modules/
+**/tests/
