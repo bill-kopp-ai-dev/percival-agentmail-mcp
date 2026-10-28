@@ -97,6 +97,7 @@ services:
     stdin_open: true
     tty: false
     restart: "no"
+    stop_grace_period: 10s
     # Hardened runtime (F4): the image writes nothing outside /tmp, so
     # the root filesystem is read-only and /tmp is a small tmpfs.
     read_only: true
@@ -135,7 +136,8 @@ services:
       - |
         AGENTMAIL_INBOX_ID="$$(cat /run/secrets/agentmail_inbox_id)"
         export AGENTMAIL_INBOX_ID
-        exec /app/.venv/bin/percival-agentmail-mcp
+        exec /app/.venv/bin/percival-agentmail-mcp "$@"
+      - agentmail-entrypoint
     # stdio MCP transport: no ports exposed, no healthcheck (stdio has
     # no HTTP endpoint). The MCP client attaches to the container's
     # stdin and reads stdout; SIGTERM cleanly closes the AgentMail

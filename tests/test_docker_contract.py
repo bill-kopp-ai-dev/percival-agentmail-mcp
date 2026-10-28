@@ -55,6 +55,11 @@ def test_compose_declares_the_single_init() -> None:
     )
 
 
+def test_compose_stop_grace_exceeds_server_shutdown_bound() -> None:
+    service = _service_block(COMPOSE.read_text(encoding="utf-8"), "server")
+    assert "stop_grace_period: 10s" in service
+
+
 def test_dockerfile_runs_as_non_root() -> None:
     """The image must not start as root under a plain ``docker run``."""
     matches = re.findall(r"^USER\s+(\S+)", _instructions(DOCKERFILE), re.MULTILINE)
@@ -63,6 +68,11 @@ def test_dockerfile_runs_as_non_root() -> None:
     uid = re.search(r"--uid\s+(\d+)", _instructions(DOCKERFILE))
     assert uid, "the non-root user must be created with an explicit --uid"
     assert int(uid.group(1)) >= 1000, f"the image UID must be >= 1000 to avoid host-UID collisions, got {uid.group(1)}"
+
+
+def test_dockerfile_reinstalls_project_from_copied_source() -> None:
+    instructions = _instructions(DOCKERFILE)
+    assert "uv sync --no-dev --no-editable --locked --reinstall-package percival-agentmail-mcp" in instructions
 
 
 def test_stdio_service_has_no_http_surface() -> None:

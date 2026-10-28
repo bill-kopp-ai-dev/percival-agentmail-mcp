@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
+## Unreleased — 2026-10-27
+
+### Fixed
+
+- Omitted inbox identifiers from startup logs and removed traceback details
+  from unexpected startup transport failures.
+- Forwarded Compose service arguments to the executable, enabling the
+  documented `docker compose run --rm -T server --version` smoke.
+- Disabled implicit cwd `.env` loading; local dotenv files now require an
+  explicit `AGENTMAIL_ENV_FILE` path.
+- Force the Docker builder to reinstall the local project package after copying
+  source, preventing a cached same-version wheel from leaving stale code in the image.
+- Handle SIGINT/SIGTERM in stdio mode with a 2-second bounded grace window,
+  then cancel remaining MCP work and shield HTTP-pool closure for up to 5 seconds.
+- Add the MIT `LICENSE` with copyright attributed to Positronic Bean Labs.
+
 ## [0.4.0] — 2026-09-26
 
 ### Added — attachment surface (v0.4.0)

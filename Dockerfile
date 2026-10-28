@@ -53,11 +53,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Bring in the source, then install the project itself in
 # non-editable mode so its code lives inside the venv site-packages
-# (no source mount needed at runtime).
+# (no source mount needed at runtime). Force this project package to be
+# rebuilt from the copied source even when uv has a cached wheel at the
+# same version.
 COPY src ./src
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev --no-editable --locked
+    uv sync --no-dev --no-editable --locked --reinstall-package percival-agentmail-mcp
 
 # ---------------------------------------------------------------------
 #  Stage 2 — runtime (slim Python, non-root, stdio MCP)

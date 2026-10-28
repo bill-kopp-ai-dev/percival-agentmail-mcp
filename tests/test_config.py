@@ -145,18 +145,21 @@ def test_config_pydantic_dict_masks_api_key(mock_config: ServerConfig) -> None:
 # --- load_config ---
 
 
-def test_load_config_missing_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_load_config_missing_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     # ``monkeypatch.chdir`` puts us in an empty tempdir so Pydantic-Settings
     # does not find a stray ``.env`` file (the developer's local one would
     # otherwise satisfy the required env vars and mask the missing-env path).
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("AGENTMAIL_API_KEY", raising=False)
     monkeypatch.delenv("AGENTMAIL_INBOX_ID", raising=False)
-    with pytest.raises(ValueError) as exc:
+    with caplog.at_level("ERROR"), pytest.raises(ValueError) as exc:
         load_config()
     assert "Missing or invalid" in str(exc.value)
     # Mensagem não deve vazar nada da chave
     assert "am_" not in str(exc.value)
+    assert all(record.exc_info is None for record in caplog.records)
 
 
 def test_load_config_logs_without_secret(
@@ -166,6 +169,35 @@ def test_load_config_logs_without_secret(
     monkeypatch.setenv("AGENTMAIL_API_KEY", "am_test_12345678")
     monkeypatch.setenv("AGENTMAIL_INBOX_ID", "agent@agentmail.to")
     with caplog.at_level("INFO"):
-        load_config()
+        config = load_config()
     for record in caplog.records:
         assert "am_test_12345678" not in record.getMessage()
+        assert config.inbox_id not in record.getMessage()
+
+
+def test_load_config_ignores_ambient_dotenv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        "AGENTMAIL_API_KEY=am_ambient_secret\nAGENTMAIL_INBOX_ID=ambient@agentmail.to\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("AGENTMAIL_API_KEY", raising=False)
+    monkeypatch.delenv("AGENTMAIL_INBOX_ID", raising=False)
+    monkeypatch.delenv("AGENTMAIL_ENV_FILE", raising=False)
+
+    with pytest.raises(ValueError, match="Missing or invalid"):
+        load_config()
+
+
+def test_load_config_reads_explicit_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    env_file = tmp_path / "selected.env"
+    env_file.write_text(
+        "AGENTMAIL_API_KEY=am_explicit_secret\nAGENTMAIL_INBOX_ID=selected@agentmail.to\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("AGENTMAIL_ENV_FILE", str(env_file))
+    monkeypatch.delenv("AGENTMAIL_API_KEY", raising=False)
+    monkeypatch.delenv("AGENTMAIL_INBOX_ID", raising=False)
+
+    config = load_config()
+
+    assert config.api_key == "am_explicit_secret"
+    assert config.inbox_id == "selected@agentmail.to"

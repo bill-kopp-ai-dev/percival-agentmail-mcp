@@ -6,6 +6,7 @@ at startup, never at runtime. Sensitive values are masked in any
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -55,7 +56,8 @@ class ServerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="AGENTMAIL_",
-        env_file=".env",
+        # Ambient cwd files are not configuration unless explicitly selected.
+        env_file=None,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -99,15 +101,15 @@ def load_config() -> ServerConfig:
             The original Pydantic error is chained for diagnostics.
     """
     try:
-        config = ServerConfig()
+        config = ServerConfig(_env_file=os.environ.get("AGENTMAIL_ENV_FILE"))
     except Exception:
         # Log estruturado para diagnóstico, sem vazar o valor da chave.
-        logger.error("Failed to load AgentMail configuration", exc_info=True)
+        logger.error("Failed to load AgentMail configuration (invalid or missing settings)")
         raise ValueError(
             "Missing or invalid AgentMail configuration. "
             "Ensure AGENTMAIL_API_KEY (>=8 chars) and AGENTMAIL_INBOX_ID "
-            "(valid email) are set in the environment or .env file."
+            "(valid email) are set in the environment or explicitly selected env file."
         ) from None
 
-    logger.info("Loaded configuration for inbox: %s", config.inbox_id)
+    logger.info("Loaded AgentMail configuration")
     return config

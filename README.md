@@ -156,7 +156,8 @@ Or without compose, pointing straight at the image:
 
 The runtime reads the same environment variables the local install
 does — see `.env.example`. `AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID`
-are mandatory; `AGENTMAIL_TIMEOUT` and `AGENTMAIL_MAX_RESULTS` have
+are mandatory, and startup requires egress to the AgentMail API for its
+health check; `AGENTMAIL_TIMEOUT` and `AGENTMAIL_MAX_RESULTS` have
 safe defaults. For a mounted read-only credential, set
 `AGENTMAIL_API_KEY_FILE`; it is used only when `AGENTMAIL_API_KEY` is unset.
 
@@ -165,6 +166,18 @@ the `environment:` / `env_file:` keys in `docker-compose.yml`. Mount the
 API-key file read-only when using `AGENTMAIL_API_KEY_FILE`. Secrets
 never end up baked into the image: the `.dockerignore` blocks `.env*`
 from the build context.
+
+For local source runs, ambient `.env` files are ignored by default. To opt
+into a specific dotenv file, set `AGENTMAIL_ENV_FILE=/path/to/file`; direct
+environment variables continue to take precedence.
+
+The CI upstream fixture is only a deterministic test double; it does not
+provide an offline product mode or validate the real AgentMail provider.
+
+On `SIGINT`/`SIGTERM`, the stdio server allows up to 2 seconds for in-flight
+work, then cancels remaining MCP work. It closes the HTTP pool under a
+cancellation shield, with a 5-second upper bound; the supervisor's stop grace
+period must exceed 7 seconds (with operational margin) to allow this cleanup to finish.
 
 ### CI
 
