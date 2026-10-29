@@ -3,7 +3,7 @@
 **Data / revisão:** 2026-10-27 / 1.2.
 **ID / estado:** S2-AM / execução parcial; A-001/A-002/A-003 verificadas localmente; dependências externas abertas.
 **Checkout executor:** `/home/bill/Projects/percival-agentmail-mcp`.  
-**Responsável:** executor técnico `<positronic>`; bill confirmado como owner do produto AgentMail e do broker Nanobot; owner de release/índice ainda a identificar.
+**Responsável:** executor técnico `<positronic>`; bill confirmado como owner do produto AgentMail e do broker Nanobot; owner de release/índice ainda a designar.
 
 ## 1. Objetivo e origem
 
@@ -28,13 +28,25 @@ publicação ou mutação de runtime é autorizado pela escrita do plano.
 ## 2. Preparação e decisões
 
 - [ ] Ler `AGENTS.md`, README, `.env.example` e documentação disponível; registrar
-  SHA/worktree, dependências/CI e destino da nota de segurança removida com o owner.
+  SHA/worktree e dependências/CI. `R-05` já define o destino F3 como
+  `pblabs-mcp-index`; preservar a exclusão local da nota, sem criar espelho.
 - [ ] Reproduzir os achados com credencial/inbox sintéticos e upstream fixture;
   tratar `inbox_id` como segredo, inclusive em logs/resultados de teste.
+- [ ] Decisões do operador de 2026-10-28 aplicáveis: `R-02` fixa `mounts=[]`
+  como default do broker, com mounts explícitos e `null` sujeito a confirmação
+  e auditoria separadas; `R-03` remove a exigência de estimar esforço, custo ou
+  prazo; `R-05` centraliza o tracker F3 em `pblabs-mcp-index`, por imagem
+  publicada, com checkouts por link; `R-06` adota o schema externo de
+  `server.json`, `pblabs.app.yaml` como extensão operacional versionada e o
+  índice PBLabs como destino, sem dependência do Docker MCP Catalog; `R-07`
+  exige VEX por CVE associado ao image ID e assinado pelo owner, com CVEs da
+  imagem base tratados por herança; `R-09` fixa a matriz de cancelamento/deadline
+  por transporte, método e deadline, permitindo declarar limitações sem exigir
+  implementação geral de cancelamento.
 - [ ] Solicitar revisão mínima S2-C01 para segredo/mounts/lifecycle e S2-C03 para
-  metadados. A-001/A-003/A-009 podem avançar sem aguardar contrato inteiro.
-- [ ] Dimensionar lotes com bill (D-06); receita de broker/piloto depende de D-05
-  e do P0 `nanobot/A-001` fechado, sem operação real implícita.
+  materializar os formatos já decididos. A-001/A-003/A-009 podem avançar sem
+  aguardar contrato inteiro. A prova de mounts do broker continua pendente; a
+  política não está mais em aberto. Não há operação real implícita.
 
 ## 3. Backlog integral e aceite
 
@@ -44,14 +56,14 @@ externa ainda não resolvida. As prioridades abaixo são as da ação de origem.
 | Ação | Achados / P | Trabalho e áreas previstas | Dependência / dono externo | Critério de verificação |
 |---|---|---|---|---|
 | A-001 | F-001, F-012, F-013 / P2 | Omitir/mascarar inbox no startup; sanitizar erro de transporte sem traceback público; remover ou tornar explícita leitura `.env` em config/server | Nenhuma dependência externa para fix local | **Verificada localmente:** sem inbox em logs INFO; erro de config sem traceback; falha de rede com credenciais/inbox sintéticos em `--network=none` gerou `ConnectError` sanitizado, exit 1 e sem traceback; cwd `.env` ignorado salvo `AGENTMAIL_ENV_FILE`; testes de secret-file/symlink mantidos. |
-| A-002 | F-002 / P2 | Tratar SIGTERM/SIGINT com cancelamento do lifespan e fechamento do pool; se optar por limitação, decisão explícita e contrato | Owner do produto e broker: bill; S2-NB-X01/S2-C01 | **Implementada/verificada localmente:** escolha do owner, 2026-10-27, é janela de grace de 2 s, seguida de cancelamento do trabalho remanescente e fechamento protegido do pool até 5 s; Compose local dá 10 s. Teste de processo envia SIGTERM durante uma tool lenta, observa a tool concluir na janela, o hook de lifespan e exit 0; teste separado confirma close protegido contra cancelamento. O broker precisa adotar timeout compatível e passar teste próprio. |
+| A-002 | F-002 / P2 | Tratar SIGTERM/SIGINT com cancelamento do lifespan e fechamento do pool; declarar a limitação e o deadline do serviço | Owner do produto e broker: bill; S2-NB-X01/S2-C01; `R-09` | **Implementada/verificada localmente:** grace de 2 s, seguida de cancelamento do trabalho remanescente e fechamento protegido do pool até 5 s; Compose local dá 10 s. Testes cobrem tool lenta e close protegido. A matriz comum registra suporte/limitação por transporte, método e deadline; isso não torna a grace de container uma exigência de cancelamento MCP end-to-end. O broker precisa adotar timeout compatível e passar teste próprio. |
 | A-003 | F-003 / P3 | Repassar argumentos no entrypoint Compose ou recusar forma não suportada explicitamente | Receita local, sem iniciar serviço real | **Verificada localmente:** `docker compose run --rm -T server --version` imprimiu versão e saiu sem startup/upstream; montagens usaram `.env.example` como fixture, sem segredo real. `docker compose config --quiet` passou. |
-| A-004 | F-004 / P2 | Preparar `server.json` e metadata/rótulos conforme formato adotado; distinguir índice PBLabs e Docker MCP Catalog opcional | S2-C03; etapas 2/4 IaC, owner do índice | Schema externo válido na revisão adotada; identidade/imagem/transporte/versão coerentes; rótulos aplicáveis e referência de catálogo real quando publicada |
-| A-005 | F-005 / P2 | Rescan do artefato atual, triagem/VEX por CVE e atualização da nota de segurança no destino acordado | Pipeline/CI e responsável de distribuição; etapa 2 IaC | **Destino decidido por bill:** artefatos do CI, referenciados neste plano. Build local atual (linux/amd64, tag `dev`, revision label `local`) concluído; Trivy/Grype/Syft ausentes, portanto sem scan/SBOM/VEX gerado nesta execução. CI e owner de release precisam produzir evidência para o candidato exato; imagem local não é candidata publicada. |
-| A-006 | F-011 / P1 | Declarar perfil stateless sem bind de host e confirmar a hipótese contra broker vigente; implementação no dono | Owner do broker Nanobot: bill; S2-NB-X01 + S2-C01 | **Perfil recomendado aceito para revisão:** `mounts=[]` para serviço stateless, exceto mounts estreitos read-only de secrets declarados. Implementação/matriz e prova no broker ainda pendentes; hipótese F-011 não fechada. |
+| A-004 | F-004 / P2 | Preparar `server.json` e metadata/rótulos conforme `R-06`; distinguir índice PBLabs e Docker MCP Catalog opcional | S2-C03; etapas 2/4 IaC, owner do índice | Schema externo adotado materializado/validado; identidade/imagem/transporte/versão coerentes; `pblabs.app.yaml` operacional versionado e destino `pblabs-mcp-index`; Docker MCP Catalog não é dependência |
+| A-005 | F-005 / P2 | Rescan do artefato atual, triagem/VEX por CVE conforme `R-07` e referência ao tracker F3 canônico | Pipeline/CI e owner de release/índice; etapa 2 IaC | Build local atual (linux/amd64, tag `dev`, revision label `local`) concluído; Trivy/Grype/Syft ausentes, portanto sem scan/SBOM/VEX nesta execução. Produzir scan/SBOM do candidato e VEX por CVE ligado ao image ID e assinado pelo owner; CVEs herdados da imagem base seguem a postura por herança; imagem local não é candidata publicada |
+| A-006 | F-011 / P1 | Declarar perfil stateless sem bind de host e confirmar a hipótese contra broker vigente; implementação no dono | Owner do broker Nanobot: bill; S2-NB-X01 + S2-C01; `R-02` | Perfil decidido: `mounts=[]` para serviço stateless, com mounts explícitos estreitos read-only para secrets quando suportados; `null` somente como operação separada, confirmada e auditada. Implementação e prova no broker ainda pendentes; hipótese F-011 não fechada |
 | A-007 | F-007 / P1 | Decidir health de startup e fixture offline suportada pelo produto: endpoint de teste ou deferimento explícito; documentar egress | Produto + S2-C01 | **Decisão ratificada pelos owners AgentMail e broker (bill), 2026-10-27:** aceitar egress ao AgentMail no perfil normal; não introduzir fixture/override de endpoint no runtime de produto. Startup exige conectividade válida; fixture CI é simulada e não homologa provider. Incorporar no S2-C01 continua pendente; D-01 mantém AgentMail fora do piloto. |
 | A-008 | F-008 / P2 | Documentar preferência `AGENTMAIL_API_KEY_FILE` e alinhar consumidor/instalador com suporte existente do MCP | Owner do broker Nanobot: bill; S2-NB-X01/S2-C01; instalador etapa 3 IaC | **Preferência aceita para revisão:** chave por arquivo read-only/referência; implementação do broker/instalador e teste do consumidor pendentes. MCP valida arquivo regular e rejeita symlink; isso não prova entrega pelo broker. |
-| A-009 | F-009, F-010 / P3 | Reconciliar docs de estado/changelog/segurança com SHA e registrar decisão sobre mypy; verificar ausência de arquivo de licença apontada no §6 | Owner para tipagem/licença/atribuição | **Parcial:** `LICENSE` MIT criado com copyright Positronic Bean Labs por decisão de bill; CHANGELOG/README/docs atualizados; `mypy` segue não configurado conforme PROJECT.md. Evidência de scan deverá ser artefato CI referenciado no plano, por decisão do owner; scanner/CI ainda pendentes. Nota F3 antiga ausente no worktree e preservada. |
+| A-009 | F-009, F-010 / P3 | Reconciliar docs de estado/changelog/segurança com SHA e registrar decisão sobre mypy; verificar ausência de arquivo de licença apontada no §6 | Owner para tipagem/licença/atribuição | **Parcial:** `LICENSE` MIT criado; CHANGELOG/README/docs atualizados; `mypy` segue não configurado conforme PROJECT.md. Evidência de scan será referenciada neste plano; scanner/CI ainda pendentes. A nota F3 antiga permanece excluída, mas seu destino canônico foi decidido por `R-05`: `pblabs-mcp-index`, sem espelho de conteúdo neste checkout |
 | A-010 | F-006 / P3 | Alinhar apresentação/consumo dos 3 prompts, preferindo documentar suporte por cliente ou flag compatível | Dono do consumidor `nanobot` A-010 | **Decisão do owner Nanobot (bill), 2026-10-27:** manter os 3 prompts no servidor por padrão; não remover nem ocultar por flag. Nanobot não os consome atualmente; registrar como limitação do consumidor, não defeito do servidor. Suporte MCP direto coberto pela suíte local; mudança futura exige decisão conjunta e teste de compatibilidade. |
 
 F-010 é melhoria/decisão consciente, não defeito obrigatório de tipagem. F-011
@@ -59,7 +71,7 @@ era hipótese bloqueada no relatório: confirmar no broker antes de afirmar defe
 atual. A-007 não se encerra apenas repetindo que o MCP está fora do piloto: a
 política de startup/egress precisa ser explicitada e validada conforme a decisão.
 
-### Decisões recebidas de bill — 2026-10-27
+### Decisões recebidas do operador — 2026-10-27 e 2026-10-28
 
 - Bill confirma ser o owner do produto AgentMail e do broker Nanobot; ratifica
   egress no startup e escolhe shutdown limitado (2 s grace + pool close até 5 s),
@@ -72,9 +84,10 @@ política de startup/egress precisa ser explicitada e validada conforme a decis�
   incorporação no contrato S2-C01 ainda aguarda review comum.
 - Revisões mínimas S2-C01/S2-C03 foram solicitadas; os contratos ainda não existem
   nesta revisão e seus drafts ficam sujeitos aos owners IaC, produto e release/índice.
-- O destino do novo scan será artefato CI com referência no plano. Owner de
-  release/índice e implementação/retention do CI ainda pendentes. A exclusão local
-  da nota F3 antiga permanece intacta.
+- O destino do novo scan será artefato CI com referência no plano. `R-07` define
+  o gate VEX e sua assinatura; produção/retenção das evidências segue pendente.
+  `R-05` centraliza F3 por image ID em `pblabs-mcp-index`. A exclusão local da
+  nota antiga permanece intacta e não deve ser substituída por cópia concorrente.
 
 ## 4. Lotes e coordenação externa
 
@@ -88,8 +101,8 @@ política de startup/egress precisa ser explicitada e validada conforme a decis�
    com autorizações próprias; documento local não equivale a release.
 
 Riscos: mudar lifespan afeta pool/retry; alterar `.env` afeta configuração existente;
-alterar prompts/schema quebra clientes. Registrar compatibilidade e decisões,
-sem assumir prazos, orçamento ou adesão de usuários a um novo profile.
+alterar prompts/schema quebra clientes. Registrar compatibilidade; `R-03` remove
+a exigência de estimar esforço, custo ou prazo.
 
 ## 5. Qualificação futura no checkout
 
