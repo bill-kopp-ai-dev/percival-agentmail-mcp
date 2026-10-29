@@ -3,6 +3,14 @@
 Project-scoped instructions for the AgentMail MCP server. Read `README.md`,
 `.env.example`, and `docs/` before changing its API or runtime configuration.
 
+## Company approval
+
+This project belongs to Positronic Bean Labs (PBLabs), owned by Bill Kopp.
+Bill is the sole final decision-maker for decisions requiring owner or company
+approval. Technical review, implementation, and routine operations may be
+delegated without transferring final approval authority. This does not alter
+runtime access or authorize publication, deployment, or production changes.
+
 ## Docker and operations
 
 - This server is stdio MCP: stdout is JSON-RPC only, with no TTY, host port or
