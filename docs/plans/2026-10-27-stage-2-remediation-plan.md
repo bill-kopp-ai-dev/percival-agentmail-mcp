@@ -1,7 +1,7 @@
 # Stage-2 — Remediação do Percival AgentMail MCP
 
-**Data / revisão:** 2026-11-01 / 2.2.
-**ID / estado:** S2-AM / revisão 2.2: execução local concluída, com validação manual do owner pendente no agente Percival. A-001–A-005, A-009 e A-010 foram implementadas/verificadas dentro do escopo desta etapa; A-004 tem metadata local válida em estado draft. Migração dos repositórios para a organização GitHub `p-bean-labs`, implantação de imagens na conta Docker Hub `pbeanlabs` e execução/retensão de CI remota estão fora do escopo. A-006–A-008 têm perfil/código/fixtures locais; falta Bill pinar e testar manualmente o servidor MCP pela UI de Percival, incluindo o startup health contra AgentMail real e timeout/readiness do broker. Não registrar a ação como concluída até observar o resultado. R-11–R-27 registram decisões do owner. Bill é o único owner, executor e signatário; aplicar uma verificação proporcional por mudança, sem aceites ou relatórios duplicados.
+**Data / revisão:** 2026-11-01 / 2.3.
+**ID / estado:** S2-AM / revisão 2.3: pinagem manual e teste funcional do AgentMail no Percival foram reportados como bem-sucedidos por Bill; inventory pós-teste confirmou o image ID ativo. A-001–A-005, A-009 e A-010 foram implementadas/verificadas dentro do escopo desta etapa; A-004 tem metadata local válida em estado draft. Migração dos repositórios para a organização GitHub `p-bean-labs`, implantação de imagens na conta Docker Hub `pbeanlabs` e execução/retensão de CI remota estão fora do escopo. Permanecem questões para fechar A-006–A-008: a UI mostra Full host access, o timeout numérico do startup não foi registrado e o modo file-secret não foi demonstrado no perfil ativo. R-11–R-27 registram decisões do owner. Bill é o único owner, executor e signatário; aplicar uma verificação proporcional por mudança, sem aceites ou relatórios duplicados.
 **Checkout:** `/home/bill/Projects/percival-agentmail-mcp`.
 **Owner, executor e autoridade final:** Bill Kopp (`bill.kopp.dev@gmail.com`), único owner, operador, executor, decisor e signatário do servidor MCP e da infraestrutura IaC da Positronic Bean Labs. Website: `labs.positronicbean.com` (em desenvolvimento, não operacional). Não há aprovador, executor ou aceite humano separado.
 
@@ -66,12 +66,13 @@ não solicitar aprovações ou aceites adicionais para a mesma operação.
   por Bill são a organização GitHub `p-bean-labs` e a conta Docker Hub `pbeanlabs`.
   Migração dos repositórios e implantação/publicação de imagem não fazem parte
   desta etapa; não há ação de deploy a executar neste plano.
-- [ ] Bill fará manualmente, pela UI do agente Percival, a pinagem e os testes
-  do servidor MCP, incluindo startup com egress ao AgentMail real. Confirmar
-  readiness do broker após a chamada autenticada de health e timeout suficiente
-  para o startup concluir. Registrar identidade fixada, resultado e timeout
-  observado antes de fechar A-006–A-008; usar file references e não inserir
-  valores de secrets neste plano. A ação ainda não foi executada.
+- [x] Bill realizou manualmente, pela UI do agente Percival, a pinagem e o teste
+  funcional do servidor MCP em 2026-11-01. Resultado e identidade estão em §6.2.
+  `mail_get_status` confirmou AgentMail online/egress (264 ms), e a UI reportou
+  MCP connected, running e 24 tools observadas. Isso não fecha todos os critérios:
+  A-006 ainda conflita com Full host access; o timeout numérico de startup não foi
+  informado; A-008 ainda precisa evidenciar referências file-secret no perfil ativo.
+  Não registrar valores de secrets.
 
 ### Decisões explícitas do owner — 2026-10-29 a 2026-11-01
 
@@ -101,19 +102,20 @@ Labs**; `labs.positronicbean.com` (em desenvolvimento, não operacional).
 | R-24 | Após o scan inicial, Bill escolheu automatizar Trivy na CI, reter o relatório completo como artifact associado ao build manifest/SBOM e falhar builds com findings Critical/High. | Decisão histórica implementada no workflow. A execução remota foi posteriormente excluída desta etapa por R-26; não é ação nem gate atual. O scan local do candidato exato foi concluído em A-005. |
 | R-25 | Bill informou que os repositórios da Positronic Bean Labs serão implantados futuramente na organização GitHub [`p-bean-labs`](https://github.com/p-bean-labs), e as imagens na conta Docker Hub [`pbeanlabs`](https://hub.docker.com/repositories/pbeanlabs). A migração e o deploy não serão feitos nesta etapa. | Esses endereços são contexto de destino futuro, não autorização nem tarefa atual. Excluir deste plano qualquer ação/gate para migrar repositórios, reivindicar namespace, publicar ou implantar imagem no Docker Hub. Manter a metadata local em draft; não alegar namespace, tag ou digest verificados. |
 | R-26 | Bill decidiu que a execução da CI remota está fora do escopo desta etapa. | A-005 fecha-se nesta etapa pela evidência do scan local do candidato exato (`b89a97f`) com zero findings. Não manter execução remota da CI ou retenção de artifact como pendência/gate desta etapa. O workflow já implementado permanece código; eventual execução automática não amplia o escopo nem requer acompanhamento como aceite. |
-| R-27 | Bill fará manualmente pela UI do agente Percival a pinagem e os testes do servidor MCP, incluindo A-007. | Uma única validação operacional fecha A-006–A-008: identidade fixada, readiness MCP pelo broker, startup health autenticado contra AgentMail real e timeout do broker suficiente para concluir o startup. Registrar status/resultado e timeout, sem valores de secrets. Fixtures e mocks não comprovam egress nem saúde do provider real. Nenhuma pinagem/teste pela UI foi declarado concluído nesta revisão. |
+| R-27 | Bill fará manualmente pela UI do agente Percival a pinagem e os testes do servidor MCP, incluindo A-007. | **Execução manual reportada em 2026-11-01:** a pinagem e o teste funcional foram realizados; ver evidência em §6.2. O teste confirmou health real, MCP connected e 24 tools, mas a foto da configuração indica Full host access; o timeout numérico de startup e as referências file-secret do perfil ativo não foram reportados. A-006–A-008 permanecem abertos apenas nesses critérios específicos. Não registrar valores de secrets. |
 
 ## 3. Backlog e critérios de conclusão
 
 Estado inicial em 2026-10-27: **não iniciada** para todas as ações. Na revisão
-2.2, A-001/A-003 foram implementadas/verificadas localmente e A-007 incorporada
+2.3, A-001/A-003 foram implementadas/verificadas localmente e A-007 incorporada
 ao draft S2-C01. A-004 (metadata) e A-005 (scan local) estão concluídas para o
 escopo desta etapa. Migração de repositórios, publicação/deploy de imagem no
-Docker Hub e execução remota de CI foram excluídos por R-25/R-26. A-006–A-008
-têm perfil e código local de file secrets com fixtures isoladas aprovadas. A
-única ação operacional restante é Bill pinar e testar manualmente pela UI de
-Percival, incluindo A-007: startup health autenticado contra AgentMail real e
-timeout/readiness do broker, conforme R-27. As prioridades abaixo são as da ação de origem. Cada
+Docker Hub e execução remota de CI foram excluídos por R-25/R-26. Bill realizou
+pinagem e teste funcional pela UI em 2026-11-01; health real, envio/leitura de um
+email de teste e conectividade MCP passaram conforme §6.2. A-006 permanece aberta
+porque o profile UI está em Full host access, A-007 porque não foi registrado o
+timeout numérico de startup, e A-008 porque a tela não demonstrou referências de
+secrets por arquivo read-only. As prioridades abaixo são as da ação de origem. Cada
 ação precisa apenas da implementação e verificação pertinentes; não há etapa
 adicional de aceite por outra pessoa.
 
@@ -123,10 +125,10 @@ adicional de aceite por outra pessoa.
 | A-002 | F-002 / P2 | Tratar SIGTERM/SIGINT com cancelamento do lifespan e fechamento do pool; declarar a limitação e o deadline do serviço | Contrato do broker Percival (`S2-NB-X01`/`S2-C01`) se/quando alterado | **Implementada/verificada localmente:** grace de 2 s, seguida de cancelamento do trabalho remanescente e fechamento protegido do pool até 5 s; Compose local dá 10 s. Testes locais cobrem tool lenta e close protegido. Se o perfil do broker mudar, uma verificação ponta a ponta deve confirmar timeout compatível; não exigir matriz ou aceite duplicado para a mesma alteração. |
 | A-003 | F-003 / P3 | Repassar argumentos no entrypoint Compose ou recusar forma não suportada explicitamente | Receita local, sem iniciar serviço real | **Verificada em 2026-10-31:** `docker compose config --quiet` passou; a imagem da receita atual foi construída e `docker compose run --rm --no-deps server --version` retornou 0.4.0. Os dois paths de secret foram apontados a `/etc/hostname` somente como fixtures de montagem; `--version` não inicializa o runtime, não leu seus conteúdos e não fez upstream. Nenhuma inbox/credencial real foi usada. |
 | A-004 | F-004 / P2 | Preparar e validar localmente `server.json` e `pblabs.app.yaml`/labels conforme `R-06`/`R-18`/R-21/R-23; declarar secrets e targets read-only sem conceder privilégios; distinguir índice PBLabs e Docker MCP Catalog opcional | Schemas externos 2025-12-11 e PBLabs 0.2; checkout do índice PBLabs | **Concluída para o escopo local desta etapa:** `docs/mcp/percival-agentmail-mcp/{server.json,pblabs.app.yaml}` passam os schemas; o perfil no índice local também passa 0.2 e declara os dois secrets/targets. Permanece `draft`, sem compatibilidade Positronic declarada. Destinos futuros informados: GitHub `p-bean-labs` e Docker Hub `pbeanlabs`; migração de repositórios e publicação/deploy de imagem estão fora do escopo. Não verificar ou reivindicar namespace, tag ou digest agora; catálogo do Index permanece vazio. |
-| A-005 | F-005 / P2 | Escanear o candidato local exato com Trivy (`R-11`/R-20); registrar source Git tree SHA + image ID e relatório; corrigir/triagem por CVE conforme `R-07`/R-15 e referenciar tracker F3 canônico | Trivy/DB local | **Concluída para esta etapa:** o primeiro candidato tinha 1 High `CVE-2026-114605` em dnspython 2.8.0; `uv.lock` foi atualizado para 2.9.1. Candidato final `0.4.0-stage2-b89a97f`, source tree `b89a97f866714878d328abdc0bdc9111f9d79858`, image ID `sha256:ccf56dbe83f91efb1411f381b0b66fdc4b17f0f7a865703c337c01b52ee9c2ce`, Trivy 0.76.1, DB de 2026-10-31: 0 findings. Evidência local: [scan Trivy](../security/2026-10-31-trivy-stage2-local-candidates.md). Nenhum VEX é necessário para esse candidato sem findings. Execução remota de CI/retensão de artifacts não é pendência desta etapa (`R-26`). |
-| A-006 | F-011 / P1 | Declarar perfil stateless sem binds de dados/host/workspace nem dados graváveis; limitar secret mounts a referências read-only estreitas conforme `R-18`/R-23 | Configuração do broker Nanobot (`S2-NB-X01`/S2-C01) | **Perfil/código local verificados; validação operacional pendente:** Compose mantém rootfs read-only, tmpfs restrito, capabilities removidas e secret files read-only. O perfil declara apenas dois mounts `kind: secret` read-only sob `/app/.secrets/`, sem binds de dados/workspace ou dados graváveis. Fixtures verificaram resolução e leitura pelo UID 1000. Bill fará a pinagem/teste manual via UI de Percival (`R-27`); não habilitar como validado até registrar o resultado dessa ação. |
-| A-007 | F-007 / P1 | Registrar no perfil AgentMail a decisão de startup/egress; não criar endpoint/override no runtime | Contrato S2-C01; mesma validação manual R-27 de A-006/A-008 | **Decisão registrada; verificação operacional pendente:** o startup faz health request autenticado ao AgentMail e depende de egress. Não haverá fixture/override de endpoint no runtime. A fixture local prova somente o comportamento contra mock, não a rede do broker nem a saúde do provider real. Bill verificará pela UI de Percival que o broker permite a chamada real e aguarda sua conclusão dentro do timeout configurado; registrar readiness/status e timeout observado. D-01 exclui AgentMail do piloto. |
-| A-008 | F-008 / P2 | Conforme `R-18`/R-23, tratar API key e inbox ID como secrets via arquivo read-only; implementar suporte nativo a ambos `*_FILE`; alinhar manager/configuração/docs/profile | UI do agente Percival; teste manual do owner (`R-27`) | **Implementada em código; fixtures isoladas passaram; validação manual pendente:** app lê ambos `*_FILE`, valida arquivos regulares e rejeita symlinks. Percival e Positronic resolveram secret mounts/read-only file refs em fixtures locais; ambos chamaram `mail_get_status` contra mock sem expor os canários. Bill fará manualmente a pinagem e os testes via UI do agente Percival. Ação ainda não executada; registrar identidade fixada e resultado da UI antes de fechar A-008. Não incluir valores de secrets no registro. Adoção Positronic não foi solicitada nem declarada. Evidência das fixtures: `docs/security/2026-10-31-secret-file-manager-fixtures.md`. |
+| A-005 | F-005 / P2 | Escanear o candidato local exato com Trivy (`R-11`/R-20); registrar source Git tree SHA + image ID e relatório; corrigir/triagem por CVE conforme `R-07`/R-15 e referenciar tracker F3 canônico | Trivy/DB local | **Concluída para esta etapa:** o primeiro candidato tinha 1 High `CVE-2026-114605` em dnspython 2.8.0; `uv.lock` foi atualizado para 2.9.1. O tag `0.4.0-stage2-b89a97f` foi refeito localmente e apontava, em 2026-11-01, para `sha256:ccf56dbe83f91efb1411f381b5de17d4a9673721b58584212d52f74deb87196c` (source tree `b89a97f866714878d328abdc0bdc9111f9d79858`). Esse image ID exato foi reescaneado com Trivy 0.76.1 e DB ainda válida (digest `sha256:b591e9190cff4aa4e385b1a25bccfd9ecf178d3c77fd194e1410b7ce7e1df058`): 0 findings. Relatório JSON: `/home/bill/.positronic/runtime/tmp/opencode/agentmail-trivy-b89a97f-current.json`; evidência e ID anterior preservados em [scan Trivy](../security/2026-10-31-trivy-stage2-local-candidates.md). Nenhum VEX é necessário para esse candidato sem findings. Execução remota de CI/retensão de artifacts não é pendência desta etapa (`R-26`). |
+| A-006 | F-011 / P1 | Declarar perfil stateless sem binds de dados/host/workspace nem dados graváveis; limitar secret mounts a referências read-only estreitas conforme `R-18`/R-23 | Configuração do broker Nanobot (`S2-NB-X01`/S2-C01) | **Implementação/fixtures locais passaram; profile live não atende o critério atual:** a UI após pin mostra `Full host access`; inventory confirma mounts R/W da raiz do host em `/host` e superfícies relacionadas no container AgentMail. Isso contradiz o perfil AgentMail stateless sem binds. A imagem/código e a resolução de secrets foram verificadas em fixture, mas A-006 permanece aberto até Bill decidir e configurar o perfil específico via manager. Não alterar diretamente `config.json`. |
+| A-007 | F-007 / P1 | Registrar no perfil AgentMail a decisão de startup/egress; não criar endpoint/override no runtime | Contrato S2-C01; mesma validação manual R-27 de A-006/A-008 | **Health real verificado; timeout ainda sem medição:** segundo o resultado de Bill, `mail_get_status` retornou `online`, `api_reachable: true`, latência 264 ms e sem erro; a UI informa MCP connected/running. Isso comprova a chamada autenticada ao AgentMail real após o startup. O valor/limite do timeout do broker e o tempo de conclusão do startup não foram reportados, portanto esse critério permanece aberto. D-01 exclui AgentMail do piloto. |
+| A-008 | F-008 / P2 | Conforme `R-18`/R-23, tratar API key e inbox ID como secrets via arquivo read-only; implementar suporte nativo a ambos `*_FILE`; alinhar manager/configuração/docs/profile | UI do agente Percival; teste manual do owner (`R-27`) | **Implementada em código/fixtures; teste funcional manual passou; configuração file-secret live não foi demonstrada:** Bill informou que o pin e o teste de envio/leitura passaram, sem expor valores. A UI mostra 3 environment variables, mas as capturas não demonstram se são referências `*_FILE` nem se os mounts são read-only. Registrar essa evidência sem valores e manter A-008 aberto até confirmar o modo file-secret na configuração/observed details do manager. Adoção Positronic não foi solicitada nem declarada. Evidência das fixtures: `docs/security/2026-10-31-secret-file-manager-fixtures.md`. |
 | A-009 | F-009, F-010 / P3 | Reconciliar docs de estado/changelog/segurança; registrar decisão mypy (`R-22`); verificar licença apontada no §6 | Nenhuma decisão externa pendente para mypy; documentação local | **Concluída localmente:** `LICENSE` MIT existe; CHANGELOG/README/docs registram redaction, paths `*_FILE`, scan local e `mypy` ausente conforme R-22. README recomenda paths de arquivos read-only, e o wrapper transitório foi removido. Workflow Trivy/gate já consta no código; sua execução remota não integra o escopo desta etapa (`R-26`). A nota F3 antiga permanece excluída; tracker canônico decidido por `R-05`: `pblabs-mcp-index`. |
 | A-010 | F-006 / P3 | Preservar suporte aos 3 prompts e registrar a limitação atual do consumidor | Compatibilidade do consumidor Nanobot | **Decisão de Bill ratificada em 2026-10-27:** manter os 3 prompts por padrão. Nanobot não os consome atualmente; isso é limitação do consumidor, não defeito do servidor. Suporte MCP coberto pela suíte local; só repetir compatibilidade se o contrato ou consumidor mudar. |
 
@@ -191,8 +193,11 @@ de esforço, custo e prazo.
 
 Ação manual do owner: pinagem e testes pela UI de Percival, incluindo startup
 health real e timeout/readiness do broker, estão registrados uma única vez na
-seção 2 (`R-27`). Publicação/deploy de imagem e execução remota da CI não são
-critérios desta etapa (`R-25`/`R-26`).
+seção 2 (`R-27`). O tag local foi resolvido para um image ID novo com o mesmo
+source tree; esse ID passou scan Trivy exato e conformance MCP offline em
+2026-11-01, sem mock de provider tratado como evidência de egress real.
+Publicação/deploy de imagem e execução remota da CI não são critérios desta
+etapa (`R-25`/`R-26`).
 
 Fixtures locais não homologam o provider real nem enviam email. Chamada real,
 publicação ou mudança de produção só ocorre quando estiver explicitamente incluída
@@ -224,6 +229,8 @@ na instrução de Bill; não se pede nova aprovação para repetir o mesmo escop
 | 2026-10-31 / Bill Kopp | Handoff de execução local / revisão 2.0 | Source tree do candidato `ebdd933ec4b37dff7a67455fcf3e42571f4ccbba`; imagem `sha256:bfa3fb1f3147867d9d5fc269b0b66fdc4b17f0f7a865703c337c01b52ee9c2ce` | Findings locais limpos após fix dnspython; canary do inbox ID detectou URL de `httpx` e a regressão foi corrigida/retessada. E2E Positronic pelo `ManagedServers` temporário e fixture Percival service+mount-policy passaram com mock e arquivos sintéticos. Contratos/schema/CI atualizados. | **Snapshot histórico de 2026-10-31, supersedido por R-25–R-27:** naquela data ainda eram listados E2E por broker Percival, CI remota e identidade de release/Registry como pendências. R-25/R-26 retiraram migração/deploy e CI remota do escopo atual; R-27 define a validação manual via UI de Percival. Nenhum manager ativo ou inbox real havia sido alterado neste handoff. |
 
 | 2026-11-01 / Bill Kopp | R-25–R-27: destinos futuros e exclusões de escopo confirmados; A-004/A-005 reconciliadas; A-006–A-008 encaminhadas à validação manual pela UI de Percival | Código Stage-2 commit `34def43`; candidato qualificado `b89a97f` | GitHub alvo futuro: `https://github.com/p-bean-labs`; Docker Hub alvo futuro: `https://hub.docker.com/repositories/pbeanlabs`. Migração e publicação/deploy excluídos desta etapa. CI remota excluída como gate; scan local concluído com zero findings. Fixtures file-secret não concluem ação manual nem comprovam health/egress real. | **Próxima ação:** Bill fixa e testa o servidor MCP manualmente pela UI do agente Percival, incluindo startup health real e timeout/readiness do broker; registrar identidade e resultado quando executado. |
+| 2026-11-01 / executor Positronic | Requalificação do candidato local A-005 e conformance offline A-006/A-008 | Source tree `b89a97f866714878d328abdc0bdc9111f9d79858`; image ID atual `sha256:ccf56dbe83f91efb1411f381b5de17d4a9673721b58584212d52f74deb87196c` | Trivy 0.76.1, DB válida (digest `sha256:b591e9190cff4aa4e385b1a25bccfd9ecf178d3c77fd194e1410b7ce7e1df058`): zero findings; relatório em `/home/bill/.positronic/runtime/tmp/opencode/agentmail-trivy-b89a97f-current.json`. Conformance Docker/MCP com mock local e secrets sintéticos: `initialize`, `tools/list` (24 tools), `mail_get_status` online e UID 1000 passaram. `/home/bill/.local/bin/uv run pytest --cov`: 246 passed, 1 skipped (live integration opt-in), cobertura 91,48%; Ruff check e format check passaram. | Candidato local exato requalificado; testes locais verdes; validação operacional manual registrada posteriormente em §6.2. |
+| 2026-11-01 / Bill Kopp | Pin manual e teste funcional AgentMail pela UI de Percival (`R-27`) | Source tree `b89a97f866714878d328abdc0bdc9111f9d79858`; image ID pretendido `sha256:ccf56dbe83f91efb1411f381b5de17d4a9673721b58584212d52f74deb87196c` | Resultado informado: `mail_get_status` online, API alcançável em 264 ms; versão 0.4.0/Python 3.12.15; leituras de inbox/messages/threads/drafts passaram; um email de teste único foi enviado ao próprio owner e confirmado por leitura e thread com `message_count=1`. Nenhuma mensagem pré-existente foi lida. Capturas da UI mostram connected/running e 24 tools observadas. | Teste funcional aprovado por Bill; inventory pós-pin confirma container ativo no image ID pretendido. A-006 permanece aberta pela configuração Full host access; A-007 ainda requer timeout numérico de startup; A-008 ainda requer evidência de file-secrets read-only no perfil ativo. Ver §6.2; sem publicação/release. |
 
 ### 6.1. Harmonização com IaC — 2026-11-01
 
@@ -249,6 +256,47 @@ na instrução de Bill; não se pede nova aprovação para repetir o mesmo escop
   CVEs, qualquer decisão VEX deve identificar seu source tree/image ID, sem
   transferência de disposição entre imagens.
 
+### 6.2. Pin e teste funcional manual AgentMail — 2026-11-01
+
+- **Proveniência:** resultado e capturas fornecidos por Bill após executar os testes
+  pela UI de Percival. A referência do email foi
+  `PCT-20261101T132909Z-7c1e`; conteúdo do email, endereço completo, secrets e IDs
+  integrais de mensagem/thread não são reproduzidos aqui. O teste enviou exatamente
+  um email de teste ao endereço próprio do owner, sem CC/BCC/anexos e sem retry.
+- **Identidade do pin:** a captura da UI mostra a troca de
+  `sha256:e104ac7549510d4fff5c103c66f60ddc105b297dc4ee430801cd0bb6e1ecc104` para
+  `sha256:ccf56dbe83f91efb1411f381b5de17d4a9673721b58584212d52f74deb87196c`.
+  O teste funcional, por si, não consultou o digest; o inventory read-only pós-pin
+  executado por Positronic confirmou `percival-mcp-agentmail` ativo nesse image ID,
+  owner `percival`, com instance ID `606f4989-5677-48f2-a23c-3f398ba1d73e`.
+- **Resultados reportados:** `mail_get_status` retornou `online`, `api_reachable=true`,
+  `api_error=null`, latência 264 ms; `mail_get_version` retornou pacote 0.4.0,
+  servidor `percival-agentmail-mcp`, Python 3.12.15; `mail_get_inbox_info` expôs apenas
+  metadados de exibição/timestamps. `mail_list_messages`, `mail_list_threads` e
+  `mail_list_drafts`, cada um com `limit=5`, retornaram 5 itens; mensagens e threads
+  tinham token de próxima página. Nenhum corpo preexistente foi lido.
+- O único `mail_send_email` retornou sucesso na primeira chamada; a leitura pelo
+  `message_id` confirmou assunto/referência, destinatário único e label `sent`;
+  `mail_get_thread` confirmou `message_count=1`, sem duplicação. Nenhuma falha foi
+  reportada. Isso confirma funcionamento do tool path e acesso real ao provider para
+  o teste; não confirma tempo limite de startup do broker.
+- A UI mostra `MCP connected`, Docker/gateway intent `running`, enabled `yes`, 24
+  tools observadas e configuração `bridge network · Full host access · 3 environment
+  variables`. Full host access e o inventory de mounts R/W da raiz do host não
+  correspondem ao perfil AgentMail stateless sem binds definido por A-006/R-13; o
+  perfil não foi alterado nesta execução. Os nomes/modos das 3 variáveis não foram
+  mostrados, portanto a entrega dos segredos por `*_FILE` read-only não está provada
+  para o manager ativo (A-008). A atividade recente registra um `update-image started`
+  e dois `update-image committed`; a duplicação coincide com a anomalia de audit já
+  registrada no tracker Stage-2 do Percival (E2), não sendo interpretada como duas
+  atualizações distintas.
+- **Estado de aceitação:** teste funcional de A-007 passou quanto à chamada de health
+  autenticada e à conectividade; readiness MCP foi reportada pela UI. Permanecem
+  pendentes apenas o timeout numérico de startup (A-007), a resolução do profile Full
+  host access (A-006) e a evidência live das referências secret-file read-only (A-008).
+  Não houve alteração de inbox, labels, mensagens/drafts existentes, nem inclusão de
+  valores de secrets no relatório.
+
 ## 7. Última etapa — atualizar o plano coordenador
 
-- [x] Contratos compartilhados atualizados uma vez: [S2-C01](../../../positronic-bean-IaC/docs/agent-runtime-contract.md), [S2-C03](../../../positronic-bean-IaC/docs/mcp-app-contract.md) e encaminhamento AgentMail no [plano geral](../../../positronic-bean-IaC/docs/plans/2026-10-27-iac-v1-stage-2-remediation-plan.md). CI remota e deploy não são gates desta etapa; resta pinagem/teste manual pela UI de Percival com startup health real e timeout/readiness (`R-27`).
+- [x] Contratos compartilhados atualizados uma vez: [S2-C01](../../../positronic-bean-IaC/docs/agent-runtime-contract.md), [S2-C03](../../../positronic-bean-IaC/docs/mcp-app-contract.md) e encaminhamento AgentMail no [plano geral](../../../positronic-bean-IaC/docs/plans/2026-10-27-iac-v1-stage-2-remediation-plan.md). CI remota e publicação/deploy externo não são gates desta etapa. Pinagem manual e teste funcional real passaram em Percival (§6.2); restam os critérios de perfil Full host access/A-006, timeout numérico/A-007 e evidência file-secret do manager/A-008.

@@ -23,12 +23,15 @@ run remotely.
 | `percival-agentmail-mcp:0.4.0-stage2-ea5629f` | `ea5629f8c768b66625dc8298b7ea85f85f850bd6` | `sha256:fdd40632ceead6236d7073077429b37ec6894792d1bdd502513cb71476559415` | **0 vulnerabilities**; conformance exposed inbox ID in `httpx` INFO request URL | `agentmail-trivy-ea5629f.json`; `agentmail-stage2-ea5629f-manifest.json` |
 | `percival-agentmail-mcp:0.4.0-stage2-ebdd933` | `ebdd933ec4b37dff7a67455fcf3e42571f4ccbba` | `sha256:bfa3fb1f3147867d9d5fc269b0b66fdc4b17f0f7a865703c337c01b52ee9c2ce` | **0 vulnerabilities**; startup URL logging fix and inbox-ID canary pass | `agentmail-trivy-ebdd933.json`; `agentmail-stage2-ebdd933-manifest.json` |
 | `percival-agentmail-mcp:0.4.0-stage2-b89a97f` | `b89a97f866714878d328abdc0bdc9111f9d79858` | `sha256:ccf56dbe83f91efb1411f381b0b66fdc4b17f0f7a865703c337c01b52ee9c2ce` | **0 vulnerabilities**; final candidate after API-error log redaction | `agentmail-trivy-b89a97f.json`; `agentmail-stage2-b89a97f-manifest.json` |
+| Rebuilt local tag `percival-agentmail-mcp:0.4.0-stage2-b89a97f` (2026-11-01) | `b89a97f866714878d328abdc0bdc9111f9d79858` | `sha256:ccf56dbe83f91efb1411f381b5de17d4a9673721b58584212d52f74deb87196c` | **0 vulnerabilities**; exact current local image re-scanned with Trivy 0.76.1 | `/home/bill/.positronic/runtime/tmp/opencode/agentmail-trivy-b89a97f-current.json` (ReportID `01a19711-0db7-7514-8639-c25b8dee3fc4`) |
 
 All candidates are `linux/amd64`, version label `0.4.0`, user `app` (UID 1000).
 The source identifier is a Git **tree** object ID for the uncommitted worktree,
 not a commit or release SHA. The corresponding Docker `revision` label and
 manifest match that tree ID. Image IDs are local config/manifest-list IDs, not
-published repository digests.
+published repository digests. On 2026-11-01 the local tag resolved to the
+rebuilt image ID above rather than the earlier recorded ID; the rebuilt image
+was scanned independently and is the currently qualified local candidate.
 
 ## Disposition
 
