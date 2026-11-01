@@ -16,7 +16,8 @@ async def test_status_online_with_latency(get_tool, fake_ctx, mock_wrapper, mock
     parsed = json.loads(result)
     assert parsed["status"] == "online"
     assert parsed["api_reachable"] is True
-    assert parsed["inbox"] == mock_config.inbox_id
+    assert "inbox" not in parsed
+    assert mock_config.inbox_id not in result
     assert isinstance(parsed["api_latency_ms"], int)
     assert parsed["api_error"] is None
 

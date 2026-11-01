@@ -92,7 +92,9 @@ async def test_update_inbox_accepts_display_name_without_parentheses() -> None:
 
 
 @pytest.mark.asyncio
-async def test_format_error_surfaces_validation_errors() -> None:
+async def test_format_error_surfaces_validation_errors_without_secret_ids_in_logs_or_output(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """format_error must surface per-field upstream ValidationErrors.
 
     Discovered live on 2026-07-22: ApiError.body is a pydantic
@@ -115,6 +117,7 @@ async def test_format_error_surfaces_validation_errors() -> None:
     # messages are what we want to surface.
     from agentmail.types.validation_error_response import ValidationErrorResponse
 
+    secret_inbox_id = "agent@agentmail.to"
     body = ValidationErrorResponse(
         name="ValidationError",
         errors=[
@@ -125,25 +128,32 @@ async def test_format_error_surfaces_validation_errors() -> None:
             },
             {
                 "code": "custom",
-                "message": "Field X is required",
+                "message": f"Field X references {secret_inbox_id}",
                 "path": ["foo", "bar"],
             },
         ],
     )
     api_err = ApiError(status_code=400, body=body)
 
-    formatted = wrapper.format_error(
-        api_err, tool_name="mail_update_inbox", affected={"inbox_id": "agent@agentmail.to"}
-    )
+    with caplog.at_level("ERROR"):
+        formatted = wrapper.format_error(
+            api_err,
+            tool_name="mail_update_inbox",
+            affected={"inbox_id": secret_inbox_id},
+            redact_values=(secret_inbox_id,),
+        )
     parsed = jsonlib.loads(formatted)
     assert parsed["status"] == "error"
     assert parsed["tool"] == "mail_update_inbox"
-    assert parsed["affected"] == {"inbox_id": "agent@agentmail.to"}
+    assert parsed["affected"] == {"inbox_id": "[redacted]"}
     # The upstream message must be surfaced in the envelope.
     assert "upstream_details" in parsed
     assert len(parsed["upstream_details"]) == 2
     assert "( )" in parsed["upstream_details"][0]
     assert parsed["upstream_details"][0].startswith("Display name contains invalid character(s): ( ) at display_name")
+    assert "[redacted]" in parsed["upstream_details"][1]
+    assert secret_inbox_id not in formatted
+    assert secret_inbox_id not in caplog.text
     # And the top-level message must mention the upstream too.
     assert "Upstream:" in parsed["message"]
     assert "Display name" in parsed["message"]

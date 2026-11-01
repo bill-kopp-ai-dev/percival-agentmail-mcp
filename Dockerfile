@@ -117,6 +117,10 @@ RUN groupadd --system --gid 1000 app && \
 
 WORKDIR /app
 
+# Fixed target for manager-provided read-only secret-file mounts. The
+# directory is empty in the image; credential contents are never copied.
+RUN mkdir -p /app/.secrets && chown app:app /app/.secrets
+
 # Copy the prebuilt virtualenv (deps + project + console_scripts) and
 # the project metadata for offline introspection. The venv already
 # lives under /app/.venv, so the absolute shebang paths inside it

@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from enum import Enum
 from typing import Any, TypeVar
+from urllib.parse import quote, quote_plus
 from uuid import UUID
 
 import httpx
@@ -296,6 +297,7 @@ class AgentMailClientWrapper:
         *,
         tool_name: str | None = None,
         affected: dict[str, Any] | None = None,
+        redact_values: tuple[str, ...] = (),
     ) -> str:
         """Format any exception into a safe JSON error for the LLM.
 
@@ -319,11 +321,25 @@ class AgentMailClientWrapper:
 
         def _with_meta(payload: dict[str, Any]) -> str:
             payload.update(meta)
-            return json.dumps(payload, indent=2)
+
+            def _redact(value: Any) -> Any:
+                if isinstance(value, str):
+                    for sensitive in redact_values:
+                        if sensitive:
+                            for candidate in (sensitive, quote(sensitive, safe=""), quote_plus(sensitive)):
+                                value = value.replace(candidate, "[redacted]")
+                    return value
+                if isinstance(value, dict):
+                    return {key: _redact(item) for key, item in value.items()}
+                if isinstance(value, list):
+                    return [_redact(item) for item in value]
+                return value
+
+            return json.dumps(_redact(payload), indent=2)
 
         if isinstance(e, ApiError):
             status_code = e.status_code
-            logger.error("AgentMail API error %s: %s", status_code, e.body)
+            logger.error("AgentMail API error %s (%s)", status_code, type(e).__name__)
 
             hint = ""
             if status_code is not None:
@@ -410,7 +426,7 @@ class AgentMailClientWrapper:
             return _with_meta(payload)
 
         if isinstance(e, httpx.TimeoutException):
-            logger.error("AgentMail timeout: %s", e)
+            logger.error("AgentMail timeout (%s)", type(e).__name__)
             return _with_meta(
                 {
                     "status": "error",
@@ -420,7 +436,7 @@ class AgentMailClientWrapper:
             )
 
         if isinstance(e, httpx.ConnectError):
-            logger.error("AgentMail connect error: %s", e)
+            logger.error("AgentMail connection error (%s)", type(e).__name__)
             return _with_meta(
                 {
                     "status": "error",
@@ -444,7 +460,7 @@ class AgentMailClientWrapper:
             # ValueErrors raised by our internal validators (e.g.
             # attachment size/base64 checks) carry actionable messages
             # for the LLM — surface them instead of hiding as "internal".
-            logger.error("Validation error (ValueError): %s", e)
+            logger.error("Validation error (ValueError)")
             return _with_meta(
                 {
                     "status": "error",
@@ -453,7 +469,7 @@ class AgentMailClientWrapper:
                 }
             )
 
-        logger.error("Unexpected error: %s", e, exc_info=True)
+        logger.error("Unexpected AgentMail tool error (%s)", type(e).__name__)
         return _with_meta(
             {
                 "status": "error",

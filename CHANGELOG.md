@@ -4,10 +4,23 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
-## Unreleased — 2026-10-27
+## Unreleased — 2026-10-31
 
 ### Fixed
 
+- Removed the configured inbox identifier from `mail_get_version` and
+  `mail_get_status`; `mail_get_inbox_info` now omits identifier/address fields.
+- Raised `httpx`/`httpcore` request logging to warning level so request URLs
+  cannot expose inbox identifiers; the container conformance check now treats
+  the synthetic inbox ID as a redaction canary.
+- Masked the inbox identifier in `ServerConfig` representations and
+  `model_dump`, and added native `AGENTMAIL_INBOX_ID_FILE` support with
+  regular-file and symlink checks.
+- Added read-only file-secret examples for both credentials and updated the
+  local Compose entrypoint and client configuration examples accordingly.
+- Updated transitive `dnspython` to 2.9.1 after the Stage-2 candidate scan
+  identified CVE-2026-114605 in 2.8.0; 2.9.0 introduced a 16-hop bound for
+  DNS compression-pointer decompression.
 - Omitted inbox identifiers from startup logs and removed traceback details
   from unexpected startup transport failures.
 - Forwarded Compose service arguments to the executable, enabling the

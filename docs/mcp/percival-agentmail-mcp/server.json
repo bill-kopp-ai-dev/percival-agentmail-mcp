@@ -1,0 +1,51 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.p-bean-labs/percival-agentmail-mcp",
+  "title": "Percival AgentMail MCP",
+  "description": "MCP server for managing an AgentMail inbox through tools and prompts.",
+  "version": "0.4.0",
+  "repository": {
+    "url": "https://github.com/bill-kopp-ai-dev/percival.OS",
+    "source": "github",
+    "subfolder": "percival-agentmail-mcp"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "docker.io/pbeanlabs/percival-agentmail-mcp:0.4.0",
+      "version": "0.4.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "docker",
+      "environmentVariables": [
+        {
+          "name": "AGENTMAIL_API_KEY",
+          "description": "AgentMail API credential; use the *_FILE form for read-only mounted secrets.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "AGENTMAIL_API_KEY_FILE",
+          "description": "Path inside the runtime to a read-only file containing the AgentMail API credential.",
+          "isRequired": true,
+          "isSecret": false,
+          "format": "filepath"
+        },
+        {
+          "name": "AGENTMAIL_INBOX_ID",
+          "description": "Default inbox identifier; treat as a secret and prefer the *_FILE form.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "AGENTMAIL_INBOX_ID_FILE",
+          "description": "Path inside the runtime to a read-only file containing the default inbox identifier.",
+          "isRequired": true,
+          "isSecret": false,
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

@@ -16,7 +16,8 @@ async def test_get_version_returns_required_fields(get_tool, fake_ctx) -> None:
     assert parsed["server_name"] == "percival-agentmail-mcp"
     assert re.match(r"\d+\.\d+\.\d+", parsed["package_version"])
     assert re.match(r"\d+\.\d+\.\d+", parsed["python_version"])
-    assert parsed["inbox"] == "agent@agentmail.to"
+    assert "inbox" not in parsed
+    assert "agent@agentmail.to" not in result
     assert "Linux" in parsed["platform"] or "Darwin" in parsed["platform"] or "Windows" in parsed["platform"]
 
 

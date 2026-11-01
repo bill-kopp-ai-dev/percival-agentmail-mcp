@@ -37,6 +37,10 @@ class ServerConfig(BaseSettings):
         default=None,
         description="Optional mounted file containing the AgentMail API key.",
     )
+    inbox_id_file: Path | None = Field(
+        default=None,
+        description="Optional mounted file containing the default inbox identifier.",
+    )
     inbox_id: EmailStr = Field(
         ...,
         description="Default inbox identifier used by all tools.",
@@ -65,28 +69,35 @@ class ServerConfig(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def load_api_key_file(cls, values: Any) -> Any:
-        if not isinstance(values, dict) or values.get("api_key") or not values.get("api_key_file"):
+        if not isinstance(values, dict):
             return values
-        path = Path(values["api_key_file"])
-        if path.is_symlink() or not path.is_file():
-            raise ValueError("AGENTMAIL_API_KEY_FILE must refer to a regular file")
-        key = path.read_text(encoding="utf-8").strip()
-        if not key:
-            raise ValueError("AGENTMAIL_API_KEY_FILE is empty")
-        return {**values, "api_key": key}
+        resolved = dict(values)
+        for value_name, file_name in (("api_key", "api_key_file"), ("inbox_id", "inbox_id_file")):
+            if resolved.get(value_name) or not resolved.get(file_name):
+                continue
+            path = Path(resolved[file_name])
+            env_name = f"AGENTMAIL_{file_name.upper()}"
+            if path.is_symlink() or not path.is_file():
+                raise ValueError(f"{env_name} must refer to a regular file")
+            value = path.read_text(encoding="utf-8").strip()
+            if not value:
+                raise ValueError(f"{env_name} is empty")
+            resolved[value_name] = value
+        return resolved
 
-    # LOW-01: bloqueia repr/str padrão que poderiam vazar a api_key
+    # Bloqueia repr/str padrão que poderiam vazar valores sensíveis.
     def __repr__(self) -> str:
-        return f"ServerConfig(inbox_id={self.inbox_id!r}, api_key=****)"
+        return "ServerConfig(api_key=****, inbox_id=****)"
 
     def __str__(self) -> str:
         return self.__repr__()
 
     def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
-        """Override to mask api_key even in model_dump output."""
+        """Mask credentials and inbox identifiers in model_dump output."""
         data = super().model_dump(**kwargs)
-        if "api_key" in data:
-            data["api_key"] = "****"
+        for field in ("api_key", "inbox_id"):
+            if field in data:
+                data[field] = "****"
         return data
 
 
@@ -107,8 +118,8 @@ def load_config() -> ServerConfig:
         logger.error("Failed to load AgentMail configuration (invalid or missing settings)")
         raise ValueError(
             "Missing or invalid AgentMail configuration. "
-            "Ensure AGENTMAIL_API_KEY (>=8 chars) and AGENTMAIL_INBOX_ID "
-            "(valid email) are set in the environment or explicitly selected env file."
+            "Ensure AGENTMAIL_API_KEY (>=8 chars) or AGENTMAIL_API_KEY_FILE and "
+            "AGENTMAIL_INBOX_ID (valid email) or AGENTMAIL_INBOX_ID_FILE are set."
         ) from None
 
     logger.info("Loaded AgentMail configuration")

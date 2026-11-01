@@ -99,7 +99,12 @@ def with_agentmail(fn: F) -> F:
                 for k, v in kwargs.items()
                 if isinstance(v, (str, int)) and k in {"message_id", "thread_id", "draft_id", "inbox_id"}
             }
-            return client.format_error(e, tool_name=tool_name, affected=affected)
+            return client.format_error(
+                e,
+                tool_name=tool_name,
+                affected=affected,
+                redact_values=(ctx_obj.config.api_key, str(ctx_obj.config.inbox_id)),
+            )
 
     # Hide injected params from FastMCP's schema introspection
     wrapper.__signature__ = _build_public_signature(fn)  # type: ignore[attr-defined]

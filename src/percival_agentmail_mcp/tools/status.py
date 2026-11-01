@@ -35,7 +35,6 @@ def register(mcp: FastMCP) -> None:
             {
                 "status": "online" if api_ok else "degraded",
                 "service": "Percival AgentMail MCP Server",
-                "inbox": config.inbox_id,
                 "api_reachable": api_ok,
                 "api_latency_ms": latency_ms,
                 "api_error": api_error,

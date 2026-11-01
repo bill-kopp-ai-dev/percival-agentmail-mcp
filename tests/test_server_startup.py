@@ -34,7 +34,9 @@ def test_main_sanitizes_startup_failure(monkeypatch: pytest.MonkeyPatch, caplog:
     assert "Traceback" not in caplog.text
 
 
-def test_main_debug_keeps_local_diagnostics(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+def test_main_debug_does_not_log_sensitive_exception_text(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     monkeypatch.setattr(server, "create_server", lambda _debug: _FailingServer())
     monkeypatch.setattr("sys.argv", ["percival-agentmail-mcp", "--debug"])
 
@@ -42,8 +44,9 @@ def test_main_debug_keeps_local_diagnostics(monkeypatch: pytest.MonkeyPatch, cap
         server.main()
 
     assert error.value.code == 1
-    assert "transport sentinel" in caplog.text
-    assert "Traceback" in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert "transport sentinel" not in caplog.text
+    assert "Traceback" not in caplog.text
 
 
 def test_sigterm_runs_lifespan_shutdown_and_exits_cleanly() -> None:

@@ -1,5 +1,6 @@
 """Inbox management tools (3 tools)."""
 
+import json
 import re
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -46,9 +47,12 @@ def register(mcp: FastMCP) -> None:
         client: AgentMailClientWrapper,
         config: ServerConfig,
     ) -> str:
-        """Retrieves the current configuration and statistical details of the agent's primary email inbox."""
+        """Returns safe inbox display and timestamp metadata without identifiers or arbitrary user metadata."""
         inbox = await client.client.inboxes.get(inbox_id=config.inbox_id)
-        return await client.format_response(inbox)
+        payload = json.loads(await client.format_response(inbox))
+        if isinstance(payload, dict):
+            payload = {key: payload[key] for key in ("display_name", "created_at", "updated_at") if key in payload}
+        return json.dumps(payload, indent=2)
 
     @mcp.tool("mail_update_inbox")
     @with_agentmail

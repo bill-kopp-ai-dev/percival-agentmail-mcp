@@ -101,6 +101,27 @@ def test_config_loads_api_key_from_mounted_file(tmp_path: Path) -> None:
     assert "am_file_secret_for_test" not in str(cfg.model_dump())
 
 
+def test_config_loads_inbox_id_from_mounted_file_and_masks_it(tmp_path: Path) -> None:
+    inbox_file = tmp_path / "agentmail-inbox-id"
+    inbox_file.write_text("file@agentmail.to\n", encoding="utf-8")
+
+    cfg = ServerConfig(_env_file=None, api_key="am_test_12345678", inbox_id_file=inbox_file)
+
+    assert cfg.inbox_id == "file@agentmail.to"
+    assert "file@agentmail.to" not in repr(cfg)
+    assert cfg.model_dump()["inbox_id"] == "****"
+
+
+def test_config_rejects_symlinked_inbox_id_file(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.write_text("file@agentmail.to", encoding="utf-8")
+    link = tmp_path / "inbox-id"
+    link.symlink_to(target)
+
+    with pytest.raises(ValidationError, match="regular file"):
+        ServerConfig(_env_file=None, api_key="am_test_12345678", inbox_id_file=link)
+
+
 def test_config_rejects_symlinked_api_key_file(tmp_path: Path) -> None:
     target = tmp_path / "target"
     target.write_text("am_file_secret_for_test", encoding="utf-8")
@@ -119,7 +140,7 @@ def test_config_repr_masks_api_key(mock_config: ServerConfig) -> None:
     text = repr(mock_config)
     assert "am_test_key_supersecret123" not in text
     assert "****" in text
-    assert "test@agentmail.to" in text
+    assert "test@agentmail.to" not in text
 
 
 def test_config_str_masks_api_key(mock_config: ServerConfig) -> None:
@@ -140,6 +161,7 @@ def test_config_pydantic_dict_masks_api_key(mock_config: ServerConfig) -> None:
     dumped = mock_config.model_dump()
     assert "am_test_key_supersecret123" not in str(dumped)
     assert dumped.get("api_key") == "****"
+    assert dumped.get("inbox_id") == "****"
 
 
 # --- load_config ---

@@ -57,11 +57,14 @@ A multi-stage `Dockerfile` is shipped from v0.4.0 onward. The resulting
 image is a self-contained stdio MCP server (~260 MB, non-root, no
 exposed ports) that can plug into any MCP-aware client.
 
-> **Scope note.** This cycle ships a **local-first** image only: no
-> `server.yaml` / `tools.json`, no submission to the official
-> [Docker MCP Registry](https://hub.docker.com/mcp) yet. The image
+> **Scope note.** This cycle ships a **local-first** image only. MCP and
+> PBLabs metadata are maintained under `docs/mcp/`; there is no submission to
+> the official [Docker MCP Registry](https://hub.docker.com/mcp). The image
 > runs against Nanobot, opencode and the Docker MCP Toolkit gateway
 > (as a plain Docker image, not as a catalog entry).
+> `server.json` names the intended Docker Hub package, but no published tag,
+> digest or registry namespace claim has been verified; it is draft metadata,
+> not an installable release.
 
 ### Quick start
 
@@ -74,9 +77,9 @@ docker build --build-arg VERSION=0.4.0 --build-arg GIT_SHA=local \
 docker run --rm percival-agentmail-mcp:dev --version
 # → Percival AgentMail MCP Server version 0.4.0
 
-# 3. Run against your real inbox (stdio over the container's
-#    stdin/stdout — the MCP client attaches via `docker run -i`):
-docker run --rm -i --init --env-file .env percival-agentmail-mcp:dev
+# 3. Run with credential files mounted read-only; configure their host paths
+#    through AGENTMAIL_API_KEY_FILE and AGENTMAIL_INBOX_ID_FILE:
+docker compose run --rm -T server
 ```
 
 ### With `docker compose`
@@ -104,8 +107,8 @@ docker compose run --rm -T server
           "run", "--rm", "-T", "server"
         ],
         "env": {
-          "AGENTMAIL_API_KEY": "YOUR_API_KEY",
-          "AGENTMAIL_INBOX_ID": "your_agent@agentmail.to"
+          "AGENTMAIL_API_KEY_FILE": "/home/you/.config/percival/agentmail_api_key",
+          "AGENTMAIL_INBOX_ID_FILE": "/home/you/.config/percival/agentmail_inbox_id"
         }
       }
     }
@@ -121,8 +124,11 @@ Or without compose, pointing straight at the image:
     "mcpServers": {
       "percival-agentmail-mcp": {
         "command": "docker",
-        "args": ["run", "--rm", "-i", "--env-file",
-                 "/path/to/percival-agentmail-mcp/.env",
+        "args": ["run", "--rm", "-i",
+                 "--mount", "type=bind,src=/home/you/.config/percival/agentmail_api_key,dst=/app/.secrets/agentmail_api_key,readonly",
+                 "--mount", "type=bind,src=/home/you/.config/percival/agentmail_inbox_id,dst=/app/.secrets/agentmail_inbox_id,readonly",
+                 "-e", "AGENTMAIL_API_KEY_FILE=/app/.secrets/agentmail_api_key",
+                 "-e", "AGENTMAIL_INBOX_ID_FILE=/app/.secrets/agentmail_inbox_id",
                  "percival-agentmail-mcp:dev"],
         "env": {}
       }
@@ -144,8 +150,8 @@ Or without compose, pointing straight at the image:
         "run", "--rm", "-T", "server"
       ],
       "environment": {
-        "AGENTMAIL_API_KEY": "YOUR_API_KEY",
-        "AGENTMAIL_INBOX_ID": "your_agent@agentmail.to"
+        "AGENTMAIL_API_KEY_FILE": "/home/you/.config/percival/agentmail_api_key",
+        "AGENTMAIL_INBOX_ID_FILE": "/home/you/.config/percival/agentmail_inbox_id"
       }
     }
   }
@@ -154,18 +160,18 @@ Or without compose, pointing straight at the image:
 
 ### Configuration
 
-The runtime reads the same environment variables the local install
-does — see `.env.example`. `AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID`
-are mandatory, and startup requires egress to the AgentMail API for its
-health check; `AGENTMAIL_TIMEOUT` and `AGENTMAIL_MAX_RESULTS` have
-safe defaults. For a mounted read-only credential, set
-`AGENTMAIL_API_KEY_FILE`; it is used only when `AGENTMAIL_API_KEY` is unset.
+`AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID` are mandatory values. Prefer
+`AGENTMAIL_API_KEY_FILE` and `AGENTMAIL_INBOX_ID_FILE`, each pointing to a
+regular read-only mounted file; literal environment values remain supported
+for local development but are not the recommended manager configuration.
+Startup requires egress to the AgentMail API for its health check;
+`AGENTMAIL_TIMEOUT` and `AGENTMAIL_MAX_RESULTS` have safe defaults. A literal
+value takes precedence when both a value and its `*_FILE` setting are supplied.
 
-Pass them via `--env-file .env`, `docker run -e KEY=VALUE …`, or
-the `environment:` / `env_file:` keys in `docker-compose.yml`. Mount the
-API-key file read-only when using `AGENTMAIL_API_KEY_FILE`. Secrets
-never end up baked into the image: the `.dockerignore` blocks `.env*`
-from the build context.
+The Compose fixture mounts both files read-only. For direct Docker use,
+mount credential files read-only and set their in-container `*_FILE` paths;
+do not put credential values in `--env`, `env_file`, client config or image
+build arguments. `.dockerignore` excludes `.env*` from the image build context.
 
 For local source runs, ambient `.env` files are ignored by default. To opt
 into a specific dotenv file, set `AGENTMAIL_ENV_FILE=/path/to/file`; direct
@@ -182,11 +188,12 @@ period must exceed 7 seconds (with operational margin) to allow this cleanup to 
 ### CI
 
 `.github/workflows/ci.yml` runs a dedicated `docker` job that builds
-the image with BuildKit + GHA layer cache, then runs three smoke
-checks: `--version` exits 0 with the SemVer from `pyproject.toml`,
-a missing-env run raises the sanitized `ValueError` (no raw
-traceback), and `docker inspect` confirms the non-root user, the
-stdio entrypoint and the OCI labels.
+the image with BuildKit + GHA layer cache, checks `--version`, MCP stdio,
+sanitized missing-configuration handling, and OCI/runtime labels. Trivy 0.76.1
+scans the exact built image; the full JSON report, source/image manifest and
+CycloneDX SBOM are retained in one CI artifact. The gate fails on Critical or
+High findings. A local scan is evidence for its exact image ID, not a substitute
+for this CI run or permission to publish/promote.
 
 ---
 
@@ -210,8 +217,8 @@ the same MCP clients:
           "percival-agentmail-mcp"
         ],
         "env": {
-          "AGENTMAIL_API_KEY": "YOUR_API_KEY",
-          "AGENTMAIL_INBOX_ID": "your_agent@agentmail.to"
+          "AGENTMAIL_API_KEY_FILE": "/home/you/.config/percival/agentmail_api_key",
+          "AGENTMAIL_INBOX_ID_FILE": "/home/you/.config/percival/agentmail_inbox_id"
         }
       }
     }
@@ -245,7 +252,8 @@ uv run ruff format --check .
 The server performs a health check on boot. Common causes:
 - **Invalid `AGENTMAIL_API_KEY`** (HTTP 401) — verify at https://agentmail.to
 - **Network/firewall** blocking `api.agentmail.to`
-- **Wrong `AGENTMAIL_INBOX_ID`** (HTTP 404)
+- **Wrong inbox ID** (HTTP 404) — verify the contents of the configured
+  `AGENTMAIL_INBOX_ID_FILE` without printing or logging the value.
 
 ### "Validation error — Invalid input fields: inbox_id"
 `AGENTMAIL_INBOX_ID` must be a valid email address (Pydantic `EmailStr`).
@@ -256,8 +264,10 @@ exponential backoff. If persistent 429s occur, reduce concurrent usage
 in the LLM client.
 
 ### "Internal error occurred. Check server logs"
-All exceptions are sanitized; details live in the server stderr output.
-Run with `--debug` for verbose logging.
+Client errors are sanitized; stderr records safe status/type details without
+raw exception text, tracebacks, credential values or inbox IDs in request URLs.
+Run with `--debug` for verbose application logs; exception payloads remain
+redacted.
 
 ### Error response shape (0.3.4+)
 When a mutational tool hits an upstream validation error, the JSON

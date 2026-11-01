@@ -1,0 +1,43 @@
+schema_version: "0.2"
+id: pblabs.percival-agentmail
+version: "0.4.0"
+publisher: Positronic Bean Labs
+source_class: official
+runtime:
+  container: true
+  transport: stdio
+  startup: on-demand
+compatibility:
+  products: [percival]
+  platforms: [linux/amd64]
+configuration:
+  required_secrets: [AGENTMAIL_API_KEY, AGENTMAIL_INBOX_ID]
+  writable_data: false
+security:
+  needs_network: true
+mounts:
+  - target: /app/.secrets/agentmail_api_key
+    kind: secret
+    access: read-only
+    required: true
+    source: installation-configured
+  - target: /app/.secrets/agentmail_inbox_id
+    kind: secret
+    access: read-only
+    required: true
+    source: installation-configured
+lifecycle:
+  owner: native-mcp-manager
+  init:
+    required: true
+    provider: container-runtime
+  restart_policy: manager-policy
+  grace_period_seconds: null
+  observed:
+    readiness: unverified
+    stdin_eof_exit_code: null
+    sigterm_exit_code: null
+    sigterm_shutdown_hook: not-verified
+    sigint: not-observed
+review:
+  status: draft

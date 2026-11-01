@@ -73,8 +73,10 @@ jobs:
           python3 scripts/docker-ci-conformance.py
           --image percival-agentmail-mcp:ci
           --mock-agentmail
-          --secret-env AGENTMAIL_API_KEY=ci-sentinel-not-a-secret
+          --secret-file AGENTMAIL_API_KEY=ci-synthetic-api-key
+          --secret-file AGENTMAIL_INBOX_ID=ci-agent@agentmail.to
           --expected-tool mail_get_status
+          --safe-tool mail_get_status
           --expected-uid 1000
           --compose-service server
       - name: Smoke (no env → sanitized failure)
@@ -113,11 +115,40 @@ jobs:
           format: cyclonedx-json
           output-file: sbom.cdx.json
           upload-artifact: false
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: percival-agentmail-mcp:ci
+          version: v0.76.1
+          scanners: vuln
+          vuln-type: os,library
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          format: json
+          output: trivy-results.json
+          exit-code: "0"
+      - name: Enforce Critical/High vulnerability gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: percival-agentmail-mcp:ci
+          version: v0.76.1
+          skip-setup-trivy: true
+          scanners: vuln
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          format: table
+          output: trivy-critical-high.txt
+          exit-code: "1"
       - name: Upload image evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: docker-evidence-agentmail-${{ github.sha }}
           path: |
             docker-build-manifest.json
             sbom.cdx.json
-          if-no-files-found: error
+            trivy-results.json
+            trivy-critical-high.txt
+          if-no-files-found: warn

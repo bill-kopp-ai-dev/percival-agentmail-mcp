@@ -30,6 +30,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+# HTTP client logs can include URLs with the inbox ID in the path.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("percival_agentmail_mcp")
 SIGNAL_DRAIN_SECONDS = 2
 SHUTDOWN_TIMEOUT_SECONDS = 5
@@ -151,10 +154,7 @@ def main() -> None:
     try:
         server.run()
     except Exception as exc:
-        if args.debug:
-            logger.exception("AgentMail MCP server stopped unexpectedly")
-        else:
-            logger.error("AgentMail MCP server stopped (%s)", type(exc).__name__)
+        logger.error("AgentMail MCP server stopped unexpectedly (%s)", type(exc).__name__)
         raise SystemExit(1) from None
 
 

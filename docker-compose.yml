@@ -114,8 +114,7 @@ services:
       # inside the container. The host-side path is picked up from
       # AGENTMAIL_API_KEY_FILE when the secret below is defined.
       AGENTMAIL_API_KEY_FILE: /run/secrets/agentmail_api_key
-      # The inbox ID remains in a mounted file and is loaded by the recipe
-      # wrapper below; the API key is read natively by the server.
+      # Both secrets are read natively from mounted files by the server.
       AGENTMAIL_INBOX_ID_FILE: /run/secrets/agentmail_inbox_id
       # Non-secret settings come from the operator's shell or the project
       # `.env`. They are declared here by name so `docker compose config`
@@ -130,14 +129,6 @@ services:
         target: agentmail_api_key
       - source: agentmail_inbox_id
         target: agentmail_inbox_id
-    entrypoint:
-      - /bin/sh
-      - -ec
-      - |
-        AGENTMAIL_INBOX_ID="$$(cat /run/secrets/agentmail_inbox_id)"
-        export AGENTMAIL_INBOX_ID
-        exec /app/.venv/bin/percival-agentmail-mcp "$@"
-      - agentmail-entrypoint
     # stdio MCP transport: no ports exposed, no healthcheck (stdio has
     # no HTTP endpoint). The MCP client attaches to the container's
     # stdin and reads stdout; SIGTERM cleanly closes the AgentMail

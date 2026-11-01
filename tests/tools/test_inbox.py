@@ -40,13 +40,23 @@ def fake_ctx(mock_context):
 
 @pytest.mark.asyncio
 async def test_get_inbox_info_returns_inbox_data(get_tool, fake_ctx, mock_wrapper, mock_config) -> None:
-    expected = {"id": mock_config.inbox_id, "display_name": "agent"}
+    expected = {
+        "id": mock_config.inbox_id,
+        "email": mock_config.inbox_id,
+        "client_id": "synthetic-client",
+        "pod_id": "synthetic-pod",
+        "metadata": {"private_note": "synthetic-only"},
+        "display_name": "agent",
+        "created_at": "2026-10-31T12:00:00Z",
+    }
     mock_wrapper.client.inboxes.get = AsyncMock(return_value=expected)
 
     result = await get_tool("mail_get_inbox_info")(fake_ctx)
 
     parsed = json.loads(result)
-    assert parsed["id"] == mock_config.inbox_id
+    assert parsed == {"display_name": "agent", "created_at": "2026-10-31T12:00:00Z"}
+    for sensitive in (mock_config.inbox_id, "synthetic-client", "synthetic-pod", "synthetic-only"):
+        assert sensitive not in result
     mock_wrapper.client.inboxes.get.assert_awaited_once_with(inbox_id=mock_config.inbox_id)
 
 
