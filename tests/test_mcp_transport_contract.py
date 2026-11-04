@@ -311,6 +311,23 @@ async def test_400_error_carries_tool_name_and_hint(contract_context) -> None:
 
 
 @pytest.mark.asyncio
+async def test_mail_send_email_does_not_retry_http_503(contract_context) -> None:
+    """An ambiguous send failure must not trigger SDK-level POST retries."""
+    server = _build_server(contract_context)
+    with respx.mock(base_url="https://api.agentmail.to") as rmock:
+        route = rmock.post("/v0/inboxes/agent@agentmail.to/messages/send").respond(
+            503, json={"message": "synthetic transient failure"}
+        )
+        await _invoke(
+            server,
+            contract_context,
+            "mail_send_email",
+            {"to": ["recipient@example.com"], "subject": "Synthetic", "text": "Synthetic"},
+        )
+        assert route.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_mail_send_email_attachment_uses_content_field_on_wire(contract_context) -> None:
     """``content_base64`` must be renamed to ``content`` before hitting the upstream."""
     server = _build_server(contract_context)

@@ -57,9 +57,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # rebuilt from the copied source even when uv has a cached wheel at the
 # same version.
 COPY src ./src
+COPY scripts/patch_mcp_cancellation.py scripts/check_mcp_cancellation.py ./scripts/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev --no-editable --locked --reinstall-package percival-agentmail-mcp
+    uv sync --no-dev --no-editable --locked --reinstall-package percival-agentmail-mcp \
+    && /app/.venv/bin/python scripts/patch_mcp_cancellation.py \
+    && /app/.venv/bin/python scripts/check_mcp_cancellation.py
 
 # ---------------------------------------------------------------------
 #  Stage 2 — runtime (slim Python, non-root, stdio MCP)

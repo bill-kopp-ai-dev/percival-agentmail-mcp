@@ -5,6 +5,9 @@
 !README.md
 !src/
 !src/**
+!scripts/
+!scripts/patch_mcp_cancellation.py
+!scripts/check_mcp_cancellation.py
 
 # VCS metadata — never needed at build time.
 .git

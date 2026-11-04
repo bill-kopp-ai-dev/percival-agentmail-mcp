@@ -161,7 +161,8 @@ def register(mcp: FastMCP) -> None:
                 "attachments": _to_sdk_attachments(attachments),
             },
         )
-        result = await client.client.inboxes.messages.send(**kwargs)
+        # A failed response can be ambiguous; retrying could send twice.
+        result = await client.client.inboxes.messages.send(**kwargs, request_options={"max_retries": 0})
         return await client.format_response(result)
 
     @mcp.tool("mail_list_messages")

@@ -20,6 +20,7 @@ async def test_send_email_passes_minimal_kwargs(get_tool, fake_ctx, mock_wrapper
         to=["a@example.com"],
         subject="Hi",
         text="Hello",
+        request_options={"max_retries": 0},
     )
     assert "msg_1" in result
 
